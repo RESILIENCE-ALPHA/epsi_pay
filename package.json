@@ -1,0 +1,38 @@
+{
+  "name": "epsi-pay",
+  "version": "1.0.0",
+  "description": "Plateforme de paiement résiliente - Project RESILIENCE-ALPHA",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "prisma:generate": "prisma generate --schema=database/prisma/schema.prisma",
+    "prisma:push": "prisma db push --schema=database/prisma/schema.prisma",
+    "prisma:studio": "prisma studio --schema=database/prisma/schema.prisma",
+    "db:seed": "tsx database/prisma/seed.ts",
+    "db:seed:10k": "tsx database/prisma/seed-10k.ts",
+    "db:setup": "docker compose up -d && prisma db push --schema=database/prisma/schema.prisma && tsx database/prisma/seed-10k.ts"
+  },
+  "keywords": [
+    "payment",
+    "resilience",
+    "workshop"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "prisma": "^6.19.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  },
+  "prisma": {
+    "schema": "database/prisma/schema.prisma",
+    "seed": "tsx database/prisma/seed.ts"
+  }
+}

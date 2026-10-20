@@ -1,0 +1,267 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================
+// MODULE 1 : AUTHENTIFICATION, SÉCURITÉ & DÉTECTION (BRUTE FORCE)
+// =============================================================
+
+enum UserRole {
+  CLIENT
+  MERCHANT
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  LOCKED
+  SUSPENDED
+}
+
+model User {
+  id                  String     @id @default(uuid())
+  email               String     @unique
+  passwordHash        String
+  name                String?
+  role                UserRole   @default(CLIENT)
+  status              UserStatus @default(ACTIVE)
+  failedLoginAttempts Int        @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  // Relations
+  wallets       Wallet[]
+  sessions      Session[]
+  loginAttempts LoginAttempt[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+// Enregistrement de chaque tentative de connexion (alimente le Machine Learning)
+model LoginAttempt {
+  id              String   @id @default(uuid())
+  attemptedEmail  String
+  targetUserId    String?
+  targetUser      User?    @relation(fields: [targetUserId], references: [id], onDelete: SetNull)
+  ipAddress       String
+  userAgent       String?
+  isAuthenticated Boolean
+  failureReason   String?  // Ex: "INVALID_CREDENTIALS", "ACCOUNT_LOCKED", "IP_BLOCKED"
+  createdAt       DateTime @default(now())
+
+  @@index([ipAddress])
+  @@index([attemptedEmail])
+  @@index([createdAt])
+  @@map("login_attempts")
+}
+
+// Table des adresses IP bloquées par la remédiation automatique ou le WAF
+model BlockedIp {
+  id        String    @id @default(uuid())
+  ipAddress String    @unique
+  reason    String    // Ex: "ML_ANOMALY_BRUTE_FORCE", "MANUAL_BLOCK", "WAF_RATE_LIMIT"
+  blockedBy String    @default("AUTO_REMEDIATION") // "AUTO_REMEDIATION", "WAF", "ADMIN"
+  isActive  Boolean   @default(true)
+  blockedAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  @@index([ipAddress])
+  @@index([isActive])
+  @@map("blocked_ips")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  ipAddress String?
+  userAgent String?
+  isValid   Boolean  @default(true)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("sessions")
+}
+
+// =============================================================
+// MODULE 2 : COMPTES & PORTEFEUILLES (WALLETS)
+// =============================================================
+
+enum WalletStatus {
+  ACTIVE
+  FROZEN
+  CLOSED
+}
+
+model Wallet {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  currency  String       @default("EUR")
+  balance   Decimal      @default(0.00) @db.Decimal(12, 2)
+  status    WalletStatus @default(ACTIVE)
+  version   Int          @default(0) // Optimistic locking pour éviter les race conditions
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  // Relations transactions
+  sentTransactions     Transaction[] @relation("SentWallet")
+  receivedTransactions Transaction[] @relation("ReceivedWallet")
+
+  @@index([userId])
+  @@map("wallets")
+}
+
+// =============================================================
+// MODULE 3 : PAIEMENTS & TRANSACTIONS (VALIDATION POST-REPRISE)
+// =============================================================
+
+enum TransactionType {
+  PAYMENT
+  TRANSFER
+  REFUND
+  VALIDATION_TEST // Utilisé lors de la preuve de remédiation : "ça remarche ?"
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  BLOCKED
+}
+
+model Transaction {
+  id               String            @id @default(uuid())
+  reference        String            @unique @default(cuid())
+  idempotencyKey   String?           @unique
+  type             TransactionType   @default(PAYMENT)
+  status           TransactionStatus @default(PENDING)
+  amount           Decimal           @db.Decimal(12, 2)
+  currency         String            @default("EUR")
+  description      String?
+
+  senderWalletId   String?
+  receiverWalletId String
+  senderWallet     Wallet?           @relation("SentWallet", fields: [senderWalletId], references: [id])
+  receiverWallet   Wallet            @relation("ReceivedWallet", fields: [receiverWalletId], references: [id])
+
+  clientIp         String?
+  userAgent        String?
+  fraudScore       Float?            // Score ML de 0.0 à 1.0
+  fraudReason      String?
+  metadata         Json?
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  auditLogs        AuditLog[]
+
+  @@index([senderWalletId])
+  @@index([receiverWalletId])
+  @@index([status])
+  @@index([type])
+  @@map("transactions")
+}
+
+// =============================================================
+// MODULE 4 : RÉSILIENCE, INCIDENTS & REMÉDIATION AUTONOME
+// =============================================================
+
+enum IncidentType {
+  BRUTE_FORCE_AUTH
+  AUTH_SERVICE_DOWN
+  DATABASE_FAILURE
+  HIGH_LATENCY_ANOMALY
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  DETECTED
+  REMEDIATING
+  RESOLVED
+  FAILED
+}
+
+model Incident {
+  id              String           @id @default(uuid())
+  incidentType    IncidentType
+  severity        IncidentSeverity @default(HIGH)
+  status          IncidentStatus   @default(DETECTED)
+  detectedBy      String           @default("MACHINE_LEARNING") // "MACHINE_LEARNING", "PROMETHEUS", "WAF"
+  targetService   String           @default("Auth")
+  targetIp        String?
+  metricsSnapshot Json?            // Snapshot des métriques au moment de la détection (RPM, errorRate, etc.)
+  detectedAt      DateTime         @default(now())
+  resolvedAt      DateTime?
+
+  remediationLogs RemediationLog[]
+
+  @@index([status])
+  @@index([incidentType])
+  @@map("incidents")
+}
+
+enum RemediationAction {
+  IP_BLOCK_ENFORCED
+  AUTH_SERVICE_RESTARTED
+  ACCOUNT_UNLOCKED
+  TEST_PAYMENT_VERIFIED
+}
+
+model RemediationLog {
+  id          String            @id @default(uuid())
+  incidentId  String
+  incident    Incident          @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  actionTaken RemediationAction
+  executedBy  String            @default("AUTO_REMEDIATION_ENGINE")
+  isSuccess   Boolean           @default(true)
+  durationMs  Int?              // Temps de remédiation en ms (argument clé pour la soutenance)
+  details     Json?
+  createdAt   DateTime          @default(now())
+
+  @@index([incidentId])
+  @@map("remediation_logs")
+}
+
+// =============================================================
+// MODULE 5 : AUDIT & TRAÇABILITÉ (NIS2 / DORA / WAZUH)
+// =============================================================
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model AuditLog {
+  id            String        @id @default(uuid())
+  userId        String?
+  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  transactionId String?
+  transaction   Transaction?  @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  action        String        // Ex: "BRUTE_FORCE_DETECTED", "IP_BLOCKED", "VALIDATION_PAYMENT_SUCCESS"
+  severity      AuditSeverity @default(INFO)
+  details       Json?
+  ipAddress     String?
+  createdAt     DateTime      @default(now())
+
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
