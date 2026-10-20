@@ -19,5 +19,21 @@ services:
       timeout: 3s
       retries: 5
 
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: epsi_pay_api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://epsi_pay:epsi_pay_secret@postgres:5432/epsi_pay_db?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:

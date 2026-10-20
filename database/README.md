@@ -232,3 +232,29 @@ npm run prisma:studio
 # Éteindre PostgreSQL
 npm run db:down
 ```
+
+---
+
+## ☸️ Déploiement Kubernetes — Image d'Initialisation & Migration (`epsi-pay-db-init`)
+
+Pour initialiser la base de données PostgreSQL dans Kubernetes (création automatique de toutes les tables, types ENUM, index et injection des données de test), une image Docker dédiée au **Kubernetes Job** est disponible :
+
+### 1. Construction de l'image
+```bash
+docker build -t epsi-pay-db-init:latest -f database/Dockerfile .
+```
+
+### 2. Manifeste Kubernetes prêt pour l'équipe Infra
+Le fichier [`database/k8s/job-db-init.yaml`](file:///Users/mohameddjebali/Desktop/workshop/epsi_pay/database/k8s/job-db-init.yaml) peut être directement appliqué par vos camarades d'infra :
+```bash
+kubectl apply -f database/k8s/job-db-init.yaml
+```
+
+### 3. Variables d'environnement du Job
+| Variable | Description | Valeur par défaut |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | Chaîne de connexion PostgreSQL | *Obligatoire* |
+| `SEED_TYPE` | Type de seed (`10k` pour le ML ou `standard`) | `10k` |
+| `MAX_RETRIES` | Nombre maximal de tentatives d'attente de PostgreSQL | `12` |
+| `SKIP_SEED` | Passer le seed et déployer uniquement le schéma (`true`/`false`) | `false` |
+

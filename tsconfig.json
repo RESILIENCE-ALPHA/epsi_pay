@@ -12,5 +12,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["database/**/*", "auth/**/*", "payment/**/*"]
+  "include": ["database/**/*", "auth/**/*", "payment/**/*", "api/**/*"],
+  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts"]
 }
