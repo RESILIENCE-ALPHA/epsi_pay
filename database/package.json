@@ -7,11 +7,11 @@
   "scripts": {
     "build": "tsc",
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
-    "prisma:push": "prisma db push --skip-generate --schema=prisma/schema.prisma",
-    "prisma:studio": "prisma studio --schema=prisma/schema.prisma",
+    "prisma:push": "tsx prisma/with-database-url.ts prisma db push --skip-generate --schema=prisma/schema.prisma",
+    "prisma:studio": "tsx prisma/with-database-url.ts prisma studio --schema=prisma/schema.prisma",
     "seed": "tsx prisma/seed.ts",
     "seed:10k": "tsx prisma/seed-10k.ts",
-    "start": "prisma db push --skip-generate --schema=prisma/schema.prisma && node dist/prisma/${SEED_SCRIPT:-seed-10k}.js"
+    "start": "node dist/prisma/with-database-url.js prisma db push --skip-generate --schema=prisma/schema.prisma && node dist/prisma/${SEED_SCRIPT:-seed-10k}.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

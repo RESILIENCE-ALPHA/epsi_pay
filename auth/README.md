@@ -35,11 +35,21 @@ Every attempt is recorded in `login_attempts` (`failureReason`: `INVALID_CREDENT
 After `MAX_FAILED_ATTEMPTS` failures, the account switches to `LOCKED` for `LOCK_DURATION_MINUTES` and its sessions are revoked.
 The token is never stored in plain text: only its SHA-256 hash is saved in `sessions.tokenHash`.
 
+Example with fake values:
+
+```bash
+curl -X POST http://localhost:3001/signup -H 'Content-Type: application/json' \
+  -d '{ "email": "jane.doe@example.com", "password": "FakePassw0rd-Example", "name": "Jane Doe" }'
+curl -X POST http://localhost:3001/login -H 'Content-Type: application/json' \
+  -d '{ "email": "jane.doe@example.com", "password": "FakePassw0rd-Example" }'
+curl http://localhost:3001/me -H 'Authorization: Bearer fake-access-token-0000'
+```
+
 ## ⚙️ Configuration
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `DATABASE_URL` | — | Shared PostgreSQL database. |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | `DB_PORT`: `5432` | PostgreSQL connection (shared database). |
 | `PORT` | `3000` | HTTP port. |
 | `MAX_FAILED_ATTEMPTS` | `5` | Consecutive failures before locking. |
 | `LOCK_DURATION_MINUTES` | `15` | Duration of the automatic lock. |

@@ -219,9 +219,16 @@ The `database` container is a one-off job. On startup, it:
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `DATABASE_URL` | — | PostgreSQL connection. |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | `DB_PORT`: `5432` | PostgreSQL connection. |
 | `SEED_SCRIPT` | `seed-10k` | `seed-10k`: 10,000+ records, skipped if the database is already populated. `seed`: minimal dataset, **empties the tables** before inserting. |
-| `SEED_USER_PASSWORD` | `Password123!` | Password (bcrypt-hashed) of every seeded account. |
+| `SEED_USER_PASSWORD` | *(built-in dev default)* | Password (bcrypt-hashed) of every seeded account. Set your own, e.g. `FakeSeedPassw0rd-Example`. |
+
+Example with fake values:
+
+```bash
+DB_HOST=localhost DB_PORT=5432 DB_NAME=fake_db DB_USER=fake_user DB_PASSWORD=fake-db-password-0000 \
+SEED_USER_PASSWORD=FakeSeedPassw0rd-Example npm --prefix database start
+```
 
 Both seeds create the `system-bot@epsi-pay.internal` account and its wallet, used by `POST /payments/test-validation`.
 

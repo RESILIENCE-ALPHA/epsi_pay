@@ -33,11 +33,20 @@ User routes require a token issued by the `auth` service (`Authorization: Bearer
 | `POST` | `/payments/test-validation` | Internal route, header `X-Internal-Token: $INTERNAL_API_TOKEN`. Credits €0.01 to the system wallet (`VALIDATION_TEST` transaction). With `{ "incidentId" }`, records the `TEST_PAYMENT_VERIFIED` proof in `remediation_logs`. |
 | `GET` | `/health` | Status of the service and the database. |
 
+Example with fake values:
+
+```bash
+curl -X POST http://localhost:3002/payments -H 'Authorization: Bearer fake-access-token-0000' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: fake-idempotency-key-0001' \
+  -d '{ "senderWalletId": "00000000-0000-0000-0000-000000000001", "receiverWalletId": "00000000-0000-0000-0000-000000000002", "amount": 10.5 }'
+curl -X POST http://localhost:3002/payments/test-validation -H 'X-Internal-Token: fake-internal-token-0000'
+```
+
 ## ⚙️ Configuration
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `DATABASE_URL` | — | Shared PostgreSQL database. |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | `DB_PORT`: `5432` | PostgreSQL connection (shared database). |
 | `PORT` | `3000` | HTTP port. |
 | `INTERNAL_API_TOKEN` | *(empty)* | Remediation engine secret. Empty = `test-validation` disabled (`403`). |
 | `SYSTEM_BOT_EMAIL` | `system-bot@epsi-pay.internal` | Account whose wallet receives the validation payments. |

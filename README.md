@@ -64,9 +64,9 @@ npm run up
 
 - Auth: `http://localhost:3001` (`POST /signup`, `POST /login`, `GET /me`, `POST /logout`, `GET /health`)
 - Payment: `http://localhost:3002` (`POST /payments`, `GET /wallets`, `GET /wallets/:id`, `GET /health`)
-- All seeded accounts use the password `Password123!` (variable `SEED_USER_PASSWORD`).
+- All seeded accounts share one password, set with `SEED_USER_PASSWORD` (e.g. `SEED_USER_PASSWORD=FakeSeedPassw0rd-Example npm run db:seed`).
 
-To enable `POST /payments/test-validation`, set a secret before starting: `INTERNAL_API_TOKEN=... npm run up`.
+To enable `POST /payments/test-validation`, set a secret before starting: `INTERNAL_API_TOKEN=fake-internal-token-0000 npm run up`.
 
 Swagger UI: `http://localhost:3001/docs` (auth) and `http://localhost:3002/docs` (payment). The specs are maintained in [`auth/openapi.yaml`](./auth/openapi.yaml) and [`payment/openapi.yaml`](./payment/openapi.yaml).
 
@@ -84,7 +84,7 @@ npm run down           # Stop everything
 
 ```bash
 npm run install:all    # Installs the dependencies of the 3 services and generates the Prisma clients
-npm run prisma:push    # Syncs the schema with the database (DATABASE_URL)
+npm run prisma:push    # Syncs the schema with the database (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
 npm --prefix auth run start:dev
 npm --prefix payment run start:dev
 ```

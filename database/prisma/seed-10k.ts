@@ -8,9 +8,10 @@ import {
   AuditSeverity
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { databaseUrl } from './database-url';
 import crypto from 'crypto';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ datasourceUrl: databaseUrl() });
 
 // Mot de passe de démo commun à tous les comptes seedés
 const passwordHash = bcrypt.hashSync(process.env.SEED_USER_PASSWORD ?? 'Password123!', 10);
