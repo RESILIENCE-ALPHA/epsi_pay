@@ -1,0 +1,26 @@
+{
+  "name": "epsi-pay-database",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EPSI Pay - schéma Prisma et seeder de la base PostgreSQL",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
+    "prisma:push": "prisma db push --skip-generate --schema=prisma/schema.prisma",
+    "prisma:studio": "prisma studio --schema=prisma/schema.prisma",
+    "seed": "tsx prisma/seed.ts",
+    "seed:10k": "tsx prisma/seed-10k.ts",
+    "start": "prisma db push --skip-generate --schema=prisma/schema.prisma && node dist/prisma/${SEED_SCRIPT:-seed-10k}.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "prisma": "^6.19.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

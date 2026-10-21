@@ -1,18 +1,57 @@
-# 💳 Service Paiement — `payment`
+# 💳 Payment Service — `payment`
 
-Service responsable des flux de paiement, de la gestion des portefeuilles et de l'exécution du **test de validation post-incident** (*"ça remarche ?"*).
+Service responsible for payment flows, wallet management and running the **post-incident validation test** (*"does it work again?"*).
 
 ---
 
-## 🎯 Rôle & Responsabilités
+## 🎯 Role & Responsibilities
 
-1. **Exécution des Paiements** :
-   - `POST /payments` : Débit émetteur et crédit destinataire avec vérification du solde.
-   - Gestion de l'idempotence (`idempotencyKey`) pour éviter les doubles débits lors des retries réseau.
-   - Verrouillage optimiste (`version` dans `wallets`) pour éviter les *race conditions*.
-2. **Preuve de Rétablissement (Scénario RESILIENCE-ALPHA)** :
-   - `POST /payments/test-validation` : Endpoint déclenché par le moteur de remédiation autonome après neutralisation de l'attaque sur `auth`.
-   - Émet une transaction de type `VALIDATION_TEST`.
-   - Si la transaction réussit $\rightarrow$ la preuve est enregistrée dans `remediation_logs` et affichée sur le Dashboard (vert).
-3. **Consultation des Soldes** :
-   - `GET /wallets/:id` : Solde disponible et historique des transactions.
+1. **Payment Execution**:
+   - `POST /payments`: debits the sender and credits the receiver, with a balance check.
+   - Idempotency handling (`idempotencyKey`) to avoid double debits on network retries.
+   - Optimistic locking (`version` in `wallets`) to avoid *race conditions*.
+2. **Proof of Recovery (RESILIENCE-ALPHA Scenario)**:
+   - `POST /payments/test-validation`: endpoint triggered by the autonomous remediation engine once the attack on `auth` has been neutralized.
+   - Issues a `VALIDATION_TEST` transaction.
+   - If the transaction succeeds $\rightarrow$ the proof is recorded in `remediation_logs` and shown on the Dashboard (green).
+3. **Balance Lookup**:
+   - `GET /wallets/:id`: available balance and transaction history.
+
+---
+
+## 🔌 API
+
+Full specification: [`openapi.yaml`](./openapi.yaml), served as Swagger UI on `/docs` (JSON on `/docs-json`).
+
+User routes require a token issued by the `auth` service (`Authorization: Bearer <token>`), checked against the shared `sessions` table.
+
+| Method | Route | Description |
+| :--- | :--- | :--- |
+| `POST` | `/payments` | Body `{ senderWalletId, receiverWalletId, amount, description? }`, optional `Idempotency-Key` header. The sender wallet must belong to the user. Codes: `422` insufficient funds / inactive wallet / currency mismatch, `409` concurrent update (retry) or idempotency key already used by another user. |
+| `GET` | `/wallets` | Wallets of the logged-in user. |
+| `GET` | `/wallets/:id` | Balance and last 20 transactions (owner or `ADMIN`). |
+| `POST` | `/payments/test-validation` | Internal route, header `X-Internal-Token: $INTERNAL_API_TOKEN`. Credits €0.01 to the system wallet (`VALIDATION_TEST` transaction). With `{ "incidentId" }`, records the `TEST_PAYMENT_VERIFIED` proof in `remediation_logs`. |
+| `GET` | `/health` | Status of the service and the database. |
+
+## ⚙️ Configuration
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | — | Shared PostgreSQL database. |
+| `PORT` | `3000` | HTTP port. |
+| `INTERNAL_API_TOKEN` | *(empty)* | Remediation engine secret. Empty = `test-validation` disabled (`403`). |
+| `SYSTEM_BOT_EMAIL` | `system-bot@epsi-pay.internal` | Account whose wallet receives the validation payments. |
+| `TRUST_PROXY` | *(empty)* | Behind APISIX: number of proxies or trusted CIDR for `X-Forwarded-For`. |
+
+## 🚀 Running
+
+NestJS service; the image is built from the repository root (the Prisma schema is read from `database/prisma/`):
+
+```bash
+# With Docker Compose (port 3002)
+docker compose up -d --build payment
+
+# Locally
+npm ci && npm run prisma:generate
+npm run start:dev
+```

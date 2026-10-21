@@ -1,18 +1,60 @@
-# 🛡️ Service Authentification — `auth`
+# 🛡️ Authentication Service — `auth`
 
-Service responsable de la gestion des identités, des sessions, et de l'encaissement de l'attaque par force brute dans le scénario **RESILIENCE-ALPHA**.
+Service responsible for identities and sessions, and for absorbing the brute force attack in the **RESILIENCE-ALPHA** scenario.
 
 ---
 
-## 🎯 Rôle & Responsabilités
+## 🎯 Role & Responsibilities
 
-1. **Authentification & Sessions** :
-   - `POST /login` : Vérification des identifiants (email / mot de passe).
-   - Gestion des tokens / sessions.
-   - Journalisation de chaque tentative dans `login_attempts` pour alimenter le modèle de **Machine Learning**.
-2. **Cloisonnement & Résilience** :
-   - Service indépendant : s'il sature sous l'effet de l'attaque Red Team (brute force), les services de paiement restent disponibles.
-   - Cible du moteur de **remédiation automatique** (relance du service `auth` et application de la liste noire `blocked_ips`).
-3. **Sécurité** :
-   - Vérification préalable de l'adresse IP cliente dans la table `blocked_ips`.
-   - Verrouillage temporaire des comptes après échecs répétés.
+1. **Authentication & Sessions**:
+   - `POST /login`: checks the credentials (email / password).
+   - Token / session management.
+   - Logs every attempt in `login_attempts` to feed the **Machine Learning** model.
+2. **Isolation & Resilience**:
+   - Independent service: if it saturates under the Red Team attack (brute force), the payment services stay available.
+   - Target of the **automatic remediation** engine (restart of the `auth` service and enforcement of the `blocked_ips` blacklist).
+3. **Security**:
+   - Checks the client IP address against the `blocked_ips` table first.
+   - Temporarily locks accounts after repeated failures.
+
+---
+
+## 🔌 API
+
+Full specification: [`openapi.yaml`](./openapi.yaml), served as Swagger UI on `/docs` (JSON on `/docs-json`).
+
+| Method | Route | Description |
+| :--- | :--- | :--- |
+| `POST` | `/signup` | Body `{ "email", "password", "name"? }`. Creates an active `CLIENT` account and an empty EUR wallet. Password: 12 to 72 characters, with a lowercase letter, an uppercase letter and a digit. Codes: `409` email already used, `403` IP blocked. |
+| `POST` | `/login` | Body `{ "email", "password" }`. Returns `{ accessToken, expiresAt, user }`. Codes: `401` invalid credentials, `403` IP blocked, `423` account locked. |
+| `GET` | `/me` | Header `Authorization: Bearer <token>`. User of the session. |
+| `POST` | `/logout` | Revokes the token's session. |
+| `GET` | `/health` | Status of the service and the database. |
+
+Every attempt is recorded in `login_attempts` (`failureReason`: `INVALID_CREDENTIALS`, `ACCOUNT_LOCKED`, `IP_BLOCKED`).
+After `MAX_FAILED_ATTEMPTS` failures, the account switches to `LOCKED` for `LOCK_DURATION_MINUTES` and its sessions are revoked.
+The token is never stored in plain text: only its SHA-256 hash is saved in `sessions.tokenHash`.
+
+## ⚙️ Configuration
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | — | Shared PostgreSQL database. |
+| `PORT` | `3000` | HTTP port. |
+| `MAX_FAILED_ATTEMPTS` | `5` | Consecutive failures before locking. |
+| `LOCK_DURATION_MINUTES` | `15` | Duration of the automatic lock. |
+| `SESSION_TTL_MINUTES` | `60` | Session lifetime. |
+| `TRUST_PROXY` | *(empty)* | Behind APISIX: number of proxies or trusted CIDR, to read the real IP from `X-Forwarded-For`. |
+
+## 🚀 Running
+
+NestJS service; the image is built from the repository root (the Prisma schema is read from `database/prisma/`):
+
+```bash
+# With Docker Compose (port 3001)
+docker compose up -d --build auth
+
+# Locally
+npm ci && npm run prisma:generate
+npm run start:dev
+```

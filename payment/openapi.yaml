@@ -1,0 +1,328 @@
+openapi: 3.0.3
+info:
+  title: EPSI Pay — Payment service
+  version: 1.0.0
+  description: |
+    Payments and wallets. User routes require a Bearer token issued by the `auth` service
+    (`POST /login`), checked against the shared `sessions` table.
+
+    `POST /payments/test-validation` is an internal route for the remediation engine,
+    protected by the `X-Internal-Token` header.
+
+    Amounts are `Decimal(12,2)`: sent as a JSON number, returned as a string.
+    Errors use the NestJS format; `message` carries a machine-readable code
+    (e.g. `INSUFFICIENT_FUNDS`), or a list of messages for validation errors.
+servers:
+  - url: http://localhost:3002
+    description: Docker Compose
+tags:
+  - name: Payments
+  - name: Wallets
+  - name: Internal
+  - name: Health
+
+paths:
+  /payments:
+    post:
+      tags: [Payments]
+      summary: Pay from one of your wallets to another wallet
+      description: |
+        Debits the sender wallet and credits the receiver wallet in one database transaction.
+        The sender wallet must belong to the caller; both wallets must be `ACTIVE` and in the same currency.
+
+        With an `Idempotency-Key`, a retry with the same key returns the original transaction
+        instead of paying twice.
+      operationId: createPayment
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 255 }
+          example: 7f1c2b9e-retry-safe-key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePaymentRequest' }
+      responses:
+        '201':
+          description: Payment done, or the original transaction for a reused `Idempotency-Key`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '400':
+          description: Invalid body, `SAME_WALLET` or `INVALID_IDEMPOTENCY_KEY`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 400, message: SAME_WALLET, error: Bad Request }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: '`SENDER_WALLET_NOT_FOUND` (missing or not yours) or `RECEIVER_WALLET_NOT_FOUND`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 404, message: SENDER_WALLET_NOT_FOUND, error: Not Found }
+        '409':
+          description: |
+            `CONCURRENT_UPDATE_RETRY`: the sender wallet changed during the payment, retry.
+            `IDEMPOTENCY_KEY_CONFLICT`: the key was already used by another user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 409, message: CONCURRENT_UPDATE_RETRY, error: Conflict }
+        '422':
+          description: '`WALLET_NOT_ACTIVE`, `CURRENCY_MISMATCH` or `INSUFFICIENT_FUNDS`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 422, message: INSUFFICIENT_FUNDS, error: Unprocessable Entity }
+
+  /payments/test-validation:
+    post:
+      tags: [Internal]
+      summary: Post-remediation test payment
+      description: |
+        Credits 0.01 to the system wallet (`SYSTEM_BOT_EMAIL`) with a `VALIDATION_TEST` transaction,
+        to prove the payment path works again. With `incidentId`, the result (success or failure)
+        is recorded as `TEST_PAYMENT_VERIFIED` in `remediation_logs`.
+
+        Disabled (always `403`) when `INTERNAL_API_TOKEN` is not set.
+      operationId: testValidation
+      security: [{ internalToken: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestValidationRequest' }
+      responses:
+        '200':
+          description: Test payment succeeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestValidationResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403':
+          description: Missing or wrong `X-Internal-Token` (`INVALID_INTERNAL_TOKEN`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 403, message: INVALID_INTERNAL_TOKEN, error: Forbidden }
+        '404':
+          description: Unknown incident (`INCIDENT_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: No active system wallet (`SYSTEM_WALLET_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /wallets:
+    get:
+      tags: [Wallets]
+      summary: List your wallets
+      operationId: listWallets
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Wallets of the current user, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Wallet' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /wallets/{id}:
+    get:
+      tags: [Wallets]
+      summary: Wallet balance and last 20 transactions
+      description: Only the owner of the wallet, or an `ADMIN`, can read it.
+      operationId: getWallet
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Wallet with its 20 most recent transactions (sent or received), newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WalletWithTransactions' }
+        '400':
+          description: '`id` is not a UUID'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Wallet missing or not yours (`WALLET_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 404, message: WALLET_NOT_FOUND, error: Not Found }
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Service and database health
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Service and database are up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: payment }
+                  database: { type: string, example: up }
+        '503':
+          description: Database unreachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: error }
+                  database: { type: string, example: down }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token returned by `POST /login` on the `auth` service.
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: Value of `INTERNAL_API_TOKEN` (remediation engine only).
+
+  responses:
+    ValidationError:
+      description: Invalid request body
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing token (`MISSING_TOKEN`), or session revoked, expired or user not active (`INVALID_SESSION`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { statusCode: 401, message: INVALID_SESSION, error: Unauthorized }
+
+  schemas:
+    Money:
+      type: string
+      pattern: '^\d{1,10}(\.\d{1,2})?$'
+      description: Decimal(12,2) serialized as a string
+      example: '42.5'
+
+    CreatePaymentRequest:
+      type: object
+      required: [senderWalletId, receiverWalletId, amount]
+      additionalProperties: false
+      properties:
+        senderWalletId: { type: string, format: uuid, description: Must belong to the caller }
+        receiverWalletId: { type: string, format: uuid, description: Must differ from the sender }
+        amount:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          maximum: 9999999999.99
+          multipleOf: 0.01
+          description: At most 2 decimal places
+        description: { type: string, maxLength: 255 }
+      example:
+        senderWalletId: 3f6c1d2e-8a4b-4c1f-9e2d-1a2b3c4d5e6f
+        receiverWalletId: 9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+        amount: 42.5
+        description: Dinner
+
+    TestValidationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        incidentId:
+          type: string
+          format: uuid
+          description: Incident being remediated; when set, the proof is written to `remediation_logs`
+
+    TestValidationResponse:
+      type: object
+      properties:
+        status: { $ref: '#/components/schemas/TransactionStatus' }
+        durationMs: { type: integer }
+        transaction: { $ref: '#/components/schemas/Transaction' }
+
+    WalletStatus:
+      type: string
+      enum: [ACTIVE, FROZEN, CLOSED]
+    TransactionType:
+      type: string
+      enum: [PAYMENT, TRANSFER, REFUND, VALIDATION_TEST]
+    TransactionStatus:
+      type: string
+      enum: [PENDING, SUCCESS, FAILED, BLOCKED]
+
+    Wallet:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        currency: { type: string, example: EUR }
+        balance: { $ref: '#/components/schemas/Money' }
+        status: { $ref: '#/components/schemas/WalletStatus' }
+        version: { type: integer, description: Optimistic-locking counter }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    WalletWithTransactions:
+      allOf:
+        - $ref: '#/components/schemas/Wallet'
+        - type: object
+          properties:
+            transactions:
+              type: array
+              maxItems: 20
+              items: { $ref: '#/components/schemas/Transaction' }
+
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string, example: TX-20261021-9F3A61C2 }
+        idempotencyKey: { type: string, nullable: true }
+        type: { $ref: '#/components/schemas/TransactionType' }
+        status: { $ref: '#/components/schemas/TransactionStatus' }
+        amount: { $ref: '#/components/schemas/Money' }
+        currency: { type: string, example: EUR }
+        description: { type: string, nullable: true }
+        senderWalletId: { type: string, format: uuid, nullable: true, description: 'null for VALIDATION_TEST' }
+        receiverWalletId: { type: string, format: uuid }
+        clientIp: { type: string, nullable: true }
+        userAgent: { type: string, nullable: true }
+        fraudScore: { type: number, nullable: true, minimum: 0, maximum: 1 }
+        fraudReason: { type: string, nullable: true }
+        metadata: { type: object, nullable: true, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Error:
+      type: object
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string }

@@ -7,9 +7,13 @@ import {
   TransactionStatus,
   AuditSeverity
 } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
 const prisma = new PrismaClient();
+
+// Mot de passe de démo commun à tous les comptes seedés
+const passwordHash = bcrypt.hashSync(process.env.SEED_USER_PASSWORD ?? 'Password123!', 10);
 
 async function generate10kData() {
   console.log('🚀 Démarrage de la génération haute performance de 10 000+ enregistrements...');
@@ -58,7 +62,7 @@ async function generate10kData() {
       id: userId,
       email,
       name,
-      passwordHash: '$2b$10$epsiWorkshopHashedPasswordPlaceholder',
+      passwordHash,
       role,
       status: UserStatus.ACTIVE,
       failedLoginAttempts: 0,
@@ -77,6 +81,18 @@ async function generate10kData() {
 
   await prisma.user.createMany({ data: usersData });
   await prisma.wallet.createMany({ data: walletsData });
+
+  // Utilisateur système dédié aux paiements tests de validation (service payment)
+  await prisma.user.create({
+    data: {
+      email: 'system-bot@epsi-pay.internal',
+      name: 'Système Test Remédiation',
+      passwordHash,
+      role: UserRole.ADMIN,
+      status: UserStatus.ACTIVE,
+      wallets: { create: { currency: 'EUR', balance: 100000.0, status: WalletStatus.ACTIVE } },
+    },
+  });
 
   // 4. Génération de 7 000 tentatives de connexion (pour alimenter le Machine Learning)
   console.log('🛡️ Génération de 7 000 logs de connexion (Trafic normal + Attaque Brute Force)...');

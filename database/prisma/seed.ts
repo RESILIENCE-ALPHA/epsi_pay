@@ -11,8 +11,12 @@ import {
   RemediationAction,
   AuditSeverity
 } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
+
+// Mot de passe de démo commun à tous les comptes seedés
+const passwordHash = bcrypt.hashSync(process.env.SEED_USER_PASSWORD ?? 'Password123!', 10);
 
 async function main() {
   console.log('🌱 Seeding database avec les données du scénario RESILIENCE-ALPHA...');
@@ -33,7 +37,7 @@ async function main() {
     data: {
       email: 'alice@epsi.fr',
       name: 'Alice Martin',
-      passwordHash: '$2b$10$epsiWorkshopPasswordHashAliceSample123',
+      passwordHash,
       role: UserRole.CLIENT,
       status: UserStatus.ACTIVE,
     },
@@ -43,7 +47,7 @@ async function main() {
     data: {
       email: 'bob@epsi.fr',
       name: 'Bob Dupont',
-      passwordHash: '$2b$10$epsiWorkshopPasswordHashBobSample123456',
+      passwordHash,
       role: UserRole.CLIENT,
       status: UserStatus.ACTIVE,
     },
@@ -53,7 +57,7 @@ async function main() {
     data: {
       email: 'store@merchant.com',
       name: 'Boutique Démo EPSI',
-      passwordHash: '$2b$10$epsiWorkshopPasswordHashMerchantSample',
+      passwordHash,
       role: UserRole.MERCHANT,
       status: UserStatus.ACTIVE,
     },
@@ -64,7 +68,7 @@ async function main() {
     data: {
       email: 'system-bot@epsi-pay.internal',
       name: 'Système Test Remédiation',
-      passwordHash: '$2b$10$internalSystemRemediationBotSecretHash',
+      passwordHash,
       role: UserRole.ADMIN,
       status: UserStatus.ACTIVE,
     },

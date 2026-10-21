@@ -1,19 +1,25 @@
 {
   "name": "epsi-pay",
   "version": "1.0.0",
-  "description": "Plateforme de paiement résiliente - Project RESILIENCE-ALPHA",
-  "main": "dist/index.js",
-  "type": "commonjs",
+  "private": true,
+  "description": "Plateforme de paiement r\u00e9siliente - Project RESILIENCE-ALPHA",
   "scripts": {
-    "build": "tsc",
-    "db:up": "docker compose up -d",
-    "db:down": "docker compose down",
-    "prisma:generate": "prisma generate --schema=database/prisma/schema.prisma",
-    "prisma:push": "prisma db push --schema=database/prisma/schema.prisma",
-    "prisma:studio": "prisma studio --schema=database/prisma/schema.prisma",
-    "db:seed": "tsx database/prisma/seed.ts",
-    "db:seed:10k": "tsx database/prisma/seed-10k.ts",
-    "db:setup": "docker compose up -d && prisma db push --schema=database/prisma/schema.prisma && tsx database/prisma/seed-10k.ts"
+    "install:all": "npm ci --prefix database && npm ci --prefix auth && npm ci --prefix payment && npm run prisma:generate",
+    "prisma:generate": "npm --prefix database run prisma:generate && npm --prefix auth run prisma:generate && npm --prefix payment run prisma:generate",
+    "build": "npm --prefix database run build && npm --prefix auth run build && npm --prefix payment run build",
+    "up": "docker compose up -d --build",
+    "down": "docker compose down",
+    "logs": "docker compose logs -f auth payment",
+    "db:up": "docker compose up -d postgres",
+    "db:seed": "docker compose up --build database",
+    "db:setup": "docker compose up -d postgres && docker compose up --build database",
+    "prisma:push": "npm --prefix database run prisma:push",
+    "prisma:studio": "npm --prefix database run prisma:studio",
+    "k8s:up": "bash scripts/minikube-up.sh",
+    "k8s:forward": "kubectl -n epsi-pay port-forward svc/auth 3001:3000 & kubectl -n epsi-pay port-forward svc/payment 3002:3000 & wait",
+    "k8s:logs": "kubectl -n epsi-pay logs -f -l \"app in (auth,payment)\" --prefix",
+    "k8s:down": "kubectl delete namespace epsi-pay --ignore-not-found",
+    "minikube:stop": "minikube stop"
   },
   "keywords": [
     "payment",
@@ -21,18 +27,5 @@
     "workshop"
   ],
   "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@types/node": "^26.6.5",
-    "prisma": "^6.19.3",
-    "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.19.3"
-  },
-  "prisma": {
-    "schema": "database/prisma/schema.prisma",
-    "seed": "tsx database/prisma/seed.ts"
-  }
+  "license": "ISC"
 }

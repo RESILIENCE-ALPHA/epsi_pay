@@ -1,0 +1,253 @@
+openapi: 3.0.3
+info:
+  title: EPSI Pay — Auth service
+  version: 1.0.0
+  description: |
+    Identity and session service. Issues opaque Bearer tokens that the `payment` service
+    validates against the shared `sessions` table (only the SHA-256 of the token is stored).
+
+    Every login attempt is recorded in `login_attempts`. After `MAX_FAILED_ATTEMPTS` (default 5)
+    consecutive failures the account is `LOCKED` for `LOCK_DURATION_MINUTES` (default 15) and its
+    sessions are revoked. Requests from an IP listed in `blocked_ips` are rejected with `403`.
+
+    Errors use the NestJS format; `message` carries a machine-readable code
+    (e.g. `INVALID_CREDENTIALS`), or a list of messages for validation errors.
+servers:
+  - url: http://localhost:3001
+    description: Docker Compose
+tags:
+  - name: Auth
+  - name: Health
+
+paths:
+  /signup:
+    post:
+      tags: [Auth]
+      summary: Create an account
+      description: Creates an active `CLIENT` user with an empty EUR wallet.
+      operationId: signup
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupRequest' }
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignupResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403':
+          description: Client IP is blocked (`IP_BLOCKED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 403, message: IP_BLOCKED, error: Forbidden }
+        '409':
+          description: Email already used (`EMAIL_ALREADY_USED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 409, message: EMAIL_ALREADY_USED, error: Conflict }
+
+  /login:
+    post:
+      tags: [Auth]
+      summary: Log in and open a session
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Session opened
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: Unknown email or wrong password (`INVALID_CREDENTIALS`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 401, message: INVALID_CREDENTIALS, error: Unauthorized }
+        '403':
+          description: Client IP is blocked (`IP_BLOCKED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 403, message: IP_BLOCKED, error: Forbidden }
+        '423':
+          description: Account locked or suspended (`ACCOUNT_LOCKED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { statusCode: 423, message: ACCOUNT_LOCKED }
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: Current session user
+      operationId: me
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Session is valid
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current session
+      operationId: logout
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204':
+          description: Session revoked
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Service and database health
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Service and database are up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: auth }
+                  database: { type: string, example: up }
+        '503':
+          description: Database unreachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: error }
+                  database: { type: string, example: down }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Opaque token returned by `POST /login` (valid `SESSION_TTL_MINUTES`, default 60).
+
+  responses:
+    ValidationError:
+      description: Invalid request body
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            statusCode: 400
+            message: [email must be an email]
+            error: Bad Request
+    Unauthorized:
+      description: Missing token (`MISSING_TOKEN`), or session revoked, expired or user not active (`INVALID_SESSION`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { statusCode: 401, message: INVALID_SESSION, error: Unauthorized }
+
+  schemas:
+    UserRole:
+      type: string
+      enum: [CLIENT, MERCHANT, ADMIN]
+    UserStatus:
+      type: string
+      enum: [ACTIVE, LOCKED, SUSPENDED]
+
+    SignupRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 255 }
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 72
+          pattern: '(?=.*[a-z])(?=.*[A-Z])(?=.*\d)'
+          description: At least one lowercase letter, one uppercase letter and one digit.
+        name: { type: string, maxLength: 255 }
+      example: { email: alice@example.com, password: CorrectHorse42, name: Alice }
+
+    SignupResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/UserRole' }
+        wallets:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              currency: { type: string, example: EUR }
+              balance: { type: string, description: 'Decimal(12,2) serialized as a string', example: '0' }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 255 }
+        password: { type: string, format: password, minLength: 1, maxLength: 128 }
+      example: { email: alice@example.com, password: CorrectHorse42 }
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken: { type: string, description: 'Opaque token (32 random bytes, base64url)' }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresAt: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/User' }
+
+    MeResponse:
+      type: object
+      properties:
+        user:
+          allOf:
+            - $ref: '#/components/schemas/User'
+            - type: object
+              properties:
+                status: { $ref: '#/components/schemas/UserStatus' }
+        sessionExpiresAt: { type: string, format: date-time }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/UserRole' }
+
+    Error:
+      type: object
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string }
