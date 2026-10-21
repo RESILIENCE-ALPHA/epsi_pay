@@ -1,6 +1,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import swaggerUi from 'swagger-ui-express';
 import { prisma } from '@epsi-pay/database';
+import { authRouter } from '@epsi-pay/auth';
 import { swaggerSpec } from './swagger';
 
 export const app: Express = express();
@@ -108,6 +109,9 @@ app.get('/health', async (_req: Request, res: Response) => {
     });
   }
 });
+
+// Montage du module d'authentification
+app.use('/auth', authRouter);
 
 // Middleware 404 pour les routes inconnues
 app.use((req: Request, res: Response) => {

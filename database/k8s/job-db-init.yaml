@@ -31,9 +31,9 @@ spec:
             - name: DATABASE_URL
               value: "postgresql://epsi_pay:epsi_pay_secret@epsi-pay-postgres:5432/epsi_pay_db?schema=public"
             
-            # Type de seed : "10k" pour le workshop complet ou "standard"
+            # Type de seed : "standard" pour un cluster propre ou "10k" pour entraînement ML
             - name: SEED_TYPE
-              value: "10k"
+              value: "standard"
             
             # Nombre maximal de tentatives d'attente de PostgreSQL
             - name: MAX_RETRIES

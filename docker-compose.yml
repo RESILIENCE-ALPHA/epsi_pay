@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15-alpine
@@ -25,8 +23,8 @@ services:
       dockerfile: database/Dockerfile
     container_name: epsi_pay_db_init
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - SEED_TYPE=${SEED_TYPE:-10k}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      - SEED_TYPE=${SEED_TYPE:-standard}
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,7 +41,7 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=${NODE_ENV:-production}
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
     depends_on:
       db-init:
         condition: service_completed_successfully

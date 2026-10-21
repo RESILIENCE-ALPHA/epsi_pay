@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@epsi-pay/database": "*",
+    "@epsi-pay/auth": "*",
     "express": "^5.3.0",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1"

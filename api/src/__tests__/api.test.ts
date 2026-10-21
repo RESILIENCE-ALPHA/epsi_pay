@@ -99,6 +99,30 @@ describe('API Service - Endpoints & Résilience', () => {
     });
   });
 
+  describe('Intégration du module /auth via l\'API Gateway', () => {
+    it('doit router POST /auth/login vers le service auth', async () => {
+      vi.spyOn(prisma.blockedIp, 'findFirst').mockResolvedValueOnce(null);
+      vi.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(null);
+      vi.spyOn(prisma.loginAttempt, 'create').mockResolvedValueOnce({} as any);
+
+      const response = await request(server)
+        .post('/auth/login')
+        .send({ email: 'inconnu@epsi.fr', password: 'randomPassword123' });
+
+      // Prouve que la requête atteint bien le contrôleur auth
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe('INVALID_CREDENTIALS');
+    });
+
+    it('doit documenter les endpoints /auth dans la spécification Swagger', async () => {
+      const response = await request(server).get('/docs.json');
+      expect(response.status).toBe(200);
+      expect(response.body.paths['/auth/login']).toBeDefined();
+      expect(response.body.paths['/auth/logout']).toBeDefined();
+      expect(response.body.paths['/auth/me']).toBeDefined();
+    });
+  });
+
   describe('Gestion des routes inconnues (404)', () => {
     it('doit renvoyer un code 404 au format JSON pour une URL inexistante', async () => {
       const response = await request(server).get('/route-inexistante-xyz');

@@ -254,7 +254,7 @@ kubectl apply -f database/k8s/job-db-init.yaml
 | Variable | Description | Valeur par défaut |
 | :--- | :--- | :--- |
 | `DATABASE_URL` | Chaîne de connexion PostgreSQL | *Obligatoire* |
-| `SEED_TYPE` | Type de seed (`10k` pour le ML ou `standard`) | `10k` |
+| `SEED_TYPE` | Type de seed (`standard` pour cluster léger ou `10k` pour entraînement ML) | `standard` (dans le manifest K8s) |
 | `MAX_RETRIES` | Nombre maximal de tentatives d'attente de PostgreSQL | `12` |
 | `SKIP_SEED` | Passer le seed et déployer uniquement le schéma (`true`/`false`) | `false` |
 

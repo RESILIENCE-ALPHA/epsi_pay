@@ -94,5 +94,20 @@ describe('Database Init & Migration Service', () => {
       expect(['node', 'npx']).toContain(cmd);
       expect(args.some((arg: string) => arg.includes('seed.'))).toBe(true);
     });
+
+    it('doit cibler le script seed standard par défaut lorsque aucun paramètre n\'est fourni', async () => {
+      const spyRun = vi.spyOn(commandRunner, 'run').mockResolvedValueOnce({
+        success: true,
+        output: 'Standard seed completed by default.',
+      });
+
+      const result = await seedDatabase();
+
+      expect(result.success).toBe(true);
+      expect(spyRun).toHaveBeenCalled();
+      const [cmd, args] = spyRun.mock.calls[0];
+      expect(['node', 'npx']).toContain(cmd);
+      expect(args.some((arg: string) => arg.includes('seed.'))).toBe(true);
+    });
   });
 });

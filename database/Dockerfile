@@ -1,24 +1,53 @@
 # ==========================================
-# Image d'initialisation BDD pour Kubernetes (Job / Migration)
+# Image d'initialisation BDD (Job / Migration)
 # ==========================================
-FROM node:22-alpine
+
+# ------------------------------------------
+# Stage 1: Build (compilation TypeScript + génération Prisma)
+# ------------------------------------------
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Copie des manifestes workspace
+COPY package.json package-lock.json ./
+COPY database/package.json database/
+
+# Installation des dépendances (workspace database + racine)
+RUN npm ci --workspace=database --include-workspace-root
+
+# Copie des sources et génération du client Prisma
+COPY database/ database/
+RUN npx prisma generate --schema=database/prisma/schema.prisma
+
+# Compilation TypeScript du package database
+RUN npm run build --workspace=database
+
+# ------------------------------------------
+# Stage 2: Runtime
+# ------------------------------------------
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Copie des configurations et manifestes
-COPY package*.json tsconfig.json ./
-COPY database ./database
-COPY dist ./dist
-COPY node_modules ./node_modules
+# Installation des dépendances (dev incluses : prisma CLI + tsx requis au runtime
+# pour `prisma db push` et le seed)
+COPY package.json package-lock.json ./
+COPY database/package.json database/
+RUN npm ci --workspace=database --include-workspace-root && npm cache clean --force
 
-# Support double : build local/hors-ligne ou build CI/CD standard
-RUN if [ ! -d "node_modules/@prisma/client" ]; then \
-      npm ci && npx prisma generate --schema=database/prisma/schema.prisma; \
-    fi
+# Copie des artefacts compilés, du client Prisma généré et du schéma
+COPY --from=builder /app/database/dist database/dist
+COPY --from=builder /app/node_modules/.prisma node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma node_modules/@prisma
+COPY database/prisma database/prisma
+COPY database/entrypoint-init.sh database/entrypoint-init.sh
 
-# Droits d'exécution sur le script d'entrée
 RUN chmod +x database/entrypoint-init.sh
 
-ENTRYPOINT ["database/entrypoint-init.sh"]
+# Le script d'entrée et init.ts résolvent leurs chemins relativement à database/
+WORKDIR /app/database
+
+ENTRYPOINT ["./entrypoint-init.sh"]

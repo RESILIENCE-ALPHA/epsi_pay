@@ -110,7 +110,7 @@ export async function pushSchema(schemaPath = 'prisma/schema.prisma'): Promise<S
 /**
  * Lance le peuplement de la base (standard ou 10k)
  */
-export async function seedDatabase(seedType: 'standard' | '10k' = '10k'): Promise<StepResult> {
+export async function seedDatabase(seedType: 'standard' | '10k' = 'standard'): Promise<StepResult> {
   const tsPath = seedType === '10k' ? 'prisma/seed-10k.ts' : 'prisma/seed.ts';
   const jsPath = seedType === '10k' ? 'dist/prisma/seed-10k.js' : 'dist/prisma/seed.js';
 
@@ -139,7 +139,7 @@ export async function runInitialization(options: InitOptions = {}): Promise<void
 
   const schemaPath = options.schemaPath || process.env.SCHEMA_PATH || 'prisma/schema.prisma';
   const seedType: 'standard' | '10k' =
-    options.seedType || (process.env.SEED_TYPE === 'standard' ? 'standard' : '10k');
+    options.seedType || (process.env.SEED_TYPE === '10k' ? '10k' : 'standard');
   const maxRetries = options.maxRetries ?? (process.env.MAX_RETRIES ? parseInt(process.env.MAX_RETRIES, 10) : 12);
   const retryIntervalMs = options.retryIntervalMs ?? 3000;
 
