@@ -95,7 +95,7 @@ export async function waitForDatabase(
 /**
  * Applique le schéma Prisma sur la base
  */
-export async function pushSchema(schemaPath = 'database/prisma/schema.prisma'): Promise<StepResult> {
+export async function pushSchema(schemaPath = 'prisma/schema.prisma'): Promise<StepResult> {
   console.log(`[DB-INIT] 🚀 Déploiement du schéma Prisma (${schemaPath})...`);
   return commandRunner.run('npx', [
     'prisma',
@@ -111,8 +111,8 @@ export async function pushSchema(schemaPath = 'database/prisma/schema.prisma'): 
  * Lance le peuplement de la base (standard ou 10k)
  */
 export async function seedDatabase(seedType: 'standard' | '10k' = '10k'): Promise<StepResult> {
-  const tsPath = seedType === '10k' ? 'database/prisma/seed-10k.ts' : 'database/prisma/seed.ts';
-  const jsPath = seedType === '10k' ? 'dist/database/prisma/seed-10k.js' : 'dist/database/prisma/seed.js';
+  const tsPath = seedType === '10k' ? 'prisma/seed-10k.ts' : 'prisma/seed.ts';
+  const jsPath = seedType === '10k' ? 'dist/prisma/seed-10k.js' : 'dist/prisma/seed.js';
 
   if (fs.existsSync(jsPath)) {
     console.log(`[DB-INIT] 🌱 Peuplement de la base (${seedType} via ${jsPath})...`);
@@ -137,7 +137,7 @@ export async function runInitialization(options: InitOptions = {}): Promise<void
     process.exit(1);
   }
 
-  const schemaPath = options.schemaPath || process.env.SCHEMA_PATH || 'database/prisma/schema.prisma';
+  const schemaPath = options.schemaPath || process.env.SCHEMA_PATH || 'prisma/schema.prisma';
   const seedType: 'standard' | '10k' =
     options.seedType || (process.env.SEED_TYPE === 'standard' ? 'standard' : '10k');
   const maxRetries = options.maxRetries ?? (process.env.MAX_RETRIES ? parseInt(process.env.MAX_RETRIES, 10) : 12);

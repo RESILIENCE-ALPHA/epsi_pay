@@ -2,7 +2,7 @@ import http from 'http';
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { app } from '../app';
-import { prisma } from '../../../database/client';
+import { prisma } from '@epsi-pay/database';
 
 describe('API Service - Endpoints & Résilience', () => {
   let server: http.Server;
@@ -23,6 +23,22 @@ describe('API Service - Endpoints & Résilience', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe('GET /docs (Swagger UI)', () => {
+    it('doit retourner la page Swagger UI avec un statut 200', async () => {
+      const response = await request(server).get('/docs/');
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('swagger');
+    });
+
+    it('doit exposer la spécification OpenAPI en JSON sur /docs.json', async () => {
+      const response = await request(server).get('/docs.json');
+      expect(response.status).toBe(200);
+      expect(response.body.openapi).toBe('3.0.0');
+      expect(response.body.info.title).toBe('EPSI Pay API');
+      expect(response.body.paths).toBeDefined();
+    });
   });
 
   describe('GET / (Informations générales)', () => {

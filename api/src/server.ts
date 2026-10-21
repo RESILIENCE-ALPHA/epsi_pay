@@ -1,5 +1,5 @@
 import { app } from './app';
-import { prisma } from '../../database/client';
+import { prisma } from '@epsi-pay/database';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 

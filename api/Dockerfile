@@ -1,24 +1,31 @@
 # ==========================================
-# Stage 1: Build & compilation TypeScript
+# Stage 1: Install & Build
 # ==========================================
 FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-COPY package*.json tsconfig.json ./
-COPY database ./database
-COPY api ./api
-COPY dist ./dist
-COPY node_modules ./node_modules
+# Copie des manifestes workspace
+COPY package.json package-lock.json ./
+COPY database/package.json database/
+COPY api/package.json api/
 
-# Si dist/ n'est pas déjà présent (ex: build CI/CD sans artefacts pré-compilés),
-# installation et compilation
-RUN if [ ! -f "dist/api/src/server.js" ]; then \
-      npm ci && npx prisma generate --schema=database/prisma/schema.prisma && npm run build; \
-    fi
+# Installation des dépendances (workspaces)
+RUN npm ci --workspace=api --workspace=database --include-workspace-root
+
+# Copie des sources
+COPY database/ database/
+COPY api/ api/
+
+# Génération du client Prisma
+RUN npx prisma generate --schema=database/prisma/schema.prisma
+
+# Compilation TypeScript du package database puis api
+RUN npm run build --workspace=database
+RUN npm run build --workspace=api
 
 # ==========================================
-# Stage 2: Runtime de production allégé
+# Stage 2: Runtime allégé
 # ==========================================
 FROM node:22-alpine AS runner
 
@@ -27,13 +34,20 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-COPY package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
+# Copie des manifestes et installation production uniquement
+COPY package.json package-lock.json ./
+COPY database/package.json database/
+COPY api/package.json api/
+RUN npm ci --workspace=api --workspace=database --include-workspace-root --omit=dev && npm cache clean --force
 
-# Sécurité K8s / CIS Docker : exécution sous utilisateur non-privilégié node
+# Copie des artefacts compilés et du client Prisma
+COPY --from=builder /app/database/dist database/dist
+COPY --from=builder /app/api/dist api/dist
+COPY --from=builder /app/node_modules/.prisma node_modules/.prisma
+COPY --from=builder /app/database/prisma/schema.prisma database/prisma/schema.prisma
+
 USER node
 
 EXPOSE 3000
 
-CMD ["node", "dist/api/src/server.js"]
+CMD ["node", "api/dist/src/server.js"]

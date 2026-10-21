@@ -52,14 +52,14 @@ describe('Database Init & Migration Service', () => {
         output: 'Your database is now in sync with your Prisma schema.',
       });
 
-      const result = await pushSchema('database/prisma/schema.prisma');
+      const result = await pushSchema('prisma/schema.prisma');
 
       expect(result.success).toBe(true);
       expect(spyRun).toHaveBeenCalledWith('npx', [
         'prisma',
         'db',
         'push',
-        '--schema=database/prisma/schema.prisma',
+        '--schema=prisma/schema.prisma',
         '--accept-data-loss',
         '--skip-generate',
       ]);
