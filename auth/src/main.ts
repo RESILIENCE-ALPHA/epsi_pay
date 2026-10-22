@@ -9,9 +9,11 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-
-  // Derrière APISIX, l'IP réelle du client vient de X-Forwarded-For (ex: TRUST_PROXY=1 ou un CIDR)
-  const trustProxy = process.env.TRUST_PROXY;
+  app.set('trust proxy', true);
+  
+  // L'IP réelle du client vient de X-Forwarded-For posé par le nginx du frontend : on fait confiance à 1 proxy par défaut
+  // (TRUST_PROXY=2 si APISIX est devant le frontend, un CIDR est aussi accepté, vide = désactivé)
+  const trustProxy = process.env.TRUST_PROXY ?? '1';
   if (trustProxy) app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));

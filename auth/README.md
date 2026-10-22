@@ -54,7 +54,7 @@ curl http://localhost:3001/me -H 'Authorization: Bearer fake-access-token-0000'
 | `MAX_FAILED_ATTEMPTS` | `5` | Consecutive failures before locking. |
 | `LOCK_DURATION_MINUTES` | `15` | Duration of the automatic lock. |
 | `SESSION_TTL_MINUTES` | `60` | Session lifetime. |
-| `TRUST_PROXY` | *(empty)* | Behind APISIX: number of proxies or trusted CIDR, to read the real IP from `X-Forwarded-For`. |
+| `TRUST_PROXY` | `1` | Number of proxies or trusted CIDR used to read the real IP from `X-Forwarded-For`. `1` = the frontend's nginx; use `2` if APISIX is in front of it; empty = disabled. |
 
 ## 🚀 Running
 

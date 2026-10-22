@@ -48,4 +48,4 @@ The image runs unprivileged nginx on port **8080** and exposes `GET /healthz`.
 
 ## Behind a proxy
 
-nginx sets `X-Forwarded-For`. The `auth` service only uses it when `TRUST_PROXY` is set; otherwise every login through the frontend is recorded with nginx's IP, which skews brute-force detection and IP blocking.
+nginx sets `X-Real-IP` and `X-Forwarded-For` to the client's IP. The `auth` service trusts one proxy hop (this nginx) by default, so it records the real client IP. If another proxy such as APISIX is put in front of the frontend, set `TRUST_PROXY=2` on `auth`; otherwise every login is recorded with that proxy's IP, which skews brute-force detection and IP blocking.
