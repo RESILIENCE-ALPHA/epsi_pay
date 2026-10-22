@@ -1,3 +1,4 @@
+import path from 'path';
 import swaggerJsdoc from 'swagger-jsdoc';
 
 const options: swaggerJsdoc.Options = {
@@ -8,7 +9,8 @@ const options: swaggerJsdoc.Options = {
       version: '1.0.0',
       description:
         'Documentation de l\'API de la plateforme de paiement résiliente — Projet RESILIENCE-ALPHA.\n\n' +
-        'Cette API expose les services d\'authentification, de paiement et de santé du système.',
+        'Passerelle d\'entrée de la plateforme : santé du système et routage vers les services ' +
+        '(auth, payment). Chaque service publie sa propre spécification, sélectionnable en haut de page.',
       contact: {
         name: 'Équipe EPSI Pay',
       },
@@ -63,22 +65,11 @@ const options: swaggerJsdoc.Options = {
                 },
                 error: {
                   type: 'string',
-                  description: 'Message d\'erreur si la base de données est indisponible',
+                  description: 'Message d\'erreur si la base de données est indisponible (absent en production)',
                   example: 'Connection refused to postgres:5432',
                 },
               },
             },
-          },
-        },
-        UserProfile: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', format: 'uuid', example: 'd4b7c62e-8a1f-4c8d-9b3e-1f2a3b4c5d6e' },
-            email: { type: 'string', format: 'email', example: 'alice@epsi.fr' },
-            name: { type: 'string', example: 'Alice Martin' },
-            role: { type: 'string', enum: ['CLIENT', 'MERCHANT', 'ADMIN'], example: 'CLIENT' },
-            status: { type: 'string', enum: ['ACTIVE', 'LOCKED', 'SUSPENDED'], example: 'ACTIVE' },
-            createdAt: { type: 'string', format: 'date-time' },
           },
         },
         ErrorNotFound: {
@@ -92,14 +83,8 @@ const options: swaggerJsdoc.Options = {
       },
     },
   },
-  // Scan des fichiers sources pour les annotations JSDoc
-  apis: [
-    './api/src/**/*.ts',
-    './auth/src/**/*.ts',
-    '../auth/src/**/*.ts',
-    './src/**/*.ts',
-    './dist/src/**/*.js',
-  ],
+  // Résolu depuis l'emplacement du fichier : src/*.ts en dev, dist/src/*.js dans l'image Docker
+  apis: [path.join(__dirname, '*.{ts,js}')],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);

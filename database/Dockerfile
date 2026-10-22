@@ -28,6 +28,15 @@ RUN npm run build --workspace=database
 # ------------------------------------------
 FROM node:22-alpine AS runner
 
+ARG VERSION=dev
+ARG REVISION=unknown
+
+LABEL org.opencontainers.image.title="epsi-pay-db-init" \
+      org.opencontainers.image.description="EPSI Pay — initialisation du schéma et seed de la base PostgreSQL" \
+      org.opencontainers.image.source="https://github.com/RESILIENCE-ALPHA/epsi_pay" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
+
 WORKDIR /app
 
 ENV NODE_ENV=production

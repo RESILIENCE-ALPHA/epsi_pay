@@ -13,4 +13,4 @@ export {
   SESSION_DURATION_MS,
 } from './service';
 export { requireAuth, AuthenticatedRequest } from './middleware';
-export { extractClientIp } from './controller';
+export { extractClientIp, parseTrustProxy } from './controller';

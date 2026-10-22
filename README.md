@@ -10,7 +10,7 @@ Le projet est structuré en services découplés à la racine, orchestrés par u
 
 ```
 epsi_pay/
-├── docker-compose.yml       # Orchestration locale (PostgreSQL 15, Auth, Payment)
+├── docker-compose.yml       # Orchestration locale (PostgreSQL 15, db-init, Auth, Payment, API, Front)
 ├── package.json             # Scripts de développement et commandes DB
 │
 ├── database/                # 🗄️ Service Persistance & Données
@@ -20,9 +20,28 @@ epsi_pay/
 ├── auth/                    # 🛡️ Service Authentification & Sessions
 │   └── README.md            # Cible de l'attaque Brute Force (PC Attaquant)
 │
-└── payment/                 # 💳 Service Paiements & Portefeuilles
-    └── README.md            # Exécution du test de reprise post-remédiation
+├── payment/                 # 💳 Service Paiements & Portefeuilles
+│   └── README.md            # Exécution du test de reprise post-remédiation
+│
+├── api/                     # 🌐 Passerelle (seule frontière de confiance, résout l'IP cliente)
+│
+└── front/                   # 🖥️ Interface web React (nginx : SPA + relais /api)
+    └── README.md            # Écrans, charte, déploiement
 ```
+
+Chemin d'une requête : `navigateur → front (nginx, :8080) → api (passerelle) → auth / payment → PostgreSQL`.
+
+---
+
+## ▶️ Démarrer la plateforme complète
+
+```bash
+cp .env.example .env          # puis renseigner les secrets
+docker compose up -d --build
+```
+
+- Interface : **http://localhost:8080** (point d'entrée public)
+- Passerelle et Swagger : http://localhost:3000/docs (machine locale uniquement)
 
 ---
 
@@ -59,16 +78,16 @@ npm run db:setup
    npm run db:up
    ```
 
-2. **Synchroniser le schéma Prisma :**
+2. **Appliquer les migrations Prisma :**
    ```bash
-   npm run prisma:push
+   npm run prisma:deploy
    ```
 
 3. **Générer le jeu de données massif (10k entrées) :**
    ```bash
    npm run db:seed:10k
    ```
-   *(Ou `npm run db:seed` pour le jeu de données minimal de 3 comptes).*
+   *(Ou `npm run db:seed` pour le jeu de données minimal de 3 comptes). ⚠️ Ces scripts effacent les données existantes.*
 
 ### 4. Visualiser les données (Prisma Studio)
 ```bash

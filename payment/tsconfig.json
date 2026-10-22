@@ -6,6 +6,8 @@
     "types": ["node"],
     "rootDir": "./",
     "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -13,5 +15,5 @@
     "resolveJsonModule": true
   },
   "include": ["./**/*"],
-  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "vitest.config.ts"]
 }

@@ -3,14 +3,31 @@ import { login, logout } from './service';
 import { AuthenticatedRequest } from './middleware';
 
 /**
- * Extrait l'adresse IP cliente réelle même derrière un proxy/reverse proxy
+ * Traduit TRUST_PROXY en valeur du réglage Express `trust proxy`.
+ *
+ * - un entier : nombre de proxys de confiance devant le service (Compose : 1 = passerelle API,
+ *   Kubernetes : 2 = Ingress + passerelle). Valeur par défaut : 1.
+ * - "true" / "false", ou une liste de sous-réseaux ("10.0.0.0/8, 172.16.0.0/12").
+ */
+export function parseTrustProxy(value: string | undefined): number | boolean | string {
+  if (value === undefined || value.trim() === '') return 1;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (/^\d+$/.test(value)) return parseInt(value, 10);
+  return value;
+}
+
+/**
+ * Adresse IP cliente réelle, résolue par Express selon `trust proxy`.
+ *
+ * Seules les entrées de X-Forwarded-For ajoutées par les proxys de confiance sont prises en compte :
+ * une valeur forgée par le client (ex: X-Forwarded-For: 6.6.6.6) est ignorée, ce qui empêche
+ * de contourner le blocage IP ou de faire bloquer l'adresse d'un tiers.
  */
 export function extractClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.ip || req.socket.remoteAddress || '127.0.0.1';
+  const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
+  // Adresse IPv4 vue via une socket IPv6 (::ffff:192.168.1.50) : on garde la forme IPv4 pour blocked_ips
+  return ip.startsWith('::ffff:') ? ip.slice('::ffff:'.length) : ip;
 }
 
 /**

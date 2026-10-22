@@ -14,18 +14,34 @@ auth/
 │   ├── controller.ts         # Contrôleur HTTP (extraction IP/headers, validation)
 │   ├── service.ts            # Logique métier pure (IP check, bcrypt, sessions, ML logs)
 │   ├── middleware.ts         # Middleware d'authentification Bearer token (requireAuth)
-│   ├── server.ts             # Serveur HTTP autonome (port 3001)
+│   ├── server.ts             # Serveur HTTP autonome (port 3001) : /health, /docs.json, gestion d'erreurs
+│   ├── swagger.ts            # Spécification OpenAPI du service
 │   └── __tests__/            # Tests automatisés Vitest / Supertest
 │       └── auth.test.ts
+├── Dockerfile                # Image multi-stage Node 22 Alpine (non-root, bcrypt compilé hors runtime)
 ├── package.json
 └── tsconfig.json
 ```
+
+## 🐳 Déploiement
+
+Auth est un **service autonome** avec sa propre image (`ghcr.io/resilience-alpha/epsi-pay-auth`) :
+
+```bash
+docker build -t epsi-pay-auth -f auth/Dockerfile .
+docker compose up -d --build auth
+```
+
+- **IP cliente** : résolue par Express via `trust proxy` (variable `TRUST_PROXY`, défaut `1`). Seules les entrées de `X-Forwarded-For` ajoutées par les proxys de confiance comptent : une IP forgée par le client est ignorée. La passerelle API transmet uniquement l'IP qu'elle a résolue : `TRUST_PROXY=1` convient en Compose comme en Kubernetes (c'est `TRUST_PROXY` de la passerelle qui dépend du nombre de proxys devant elle).
+- **Exposition** : auth ne doit être joignable que par la passerelle (pas de port publié en Compose, `ClusterIP` en Kubernetes), sinon un client pourrait forger son IP.
+- Sonde liveness/readiness Kubernetes : `GET /health` (vérifie PostgreSQL, `503` si la base est indisponible).
+- Spécification OpenAPI : `GET /auth/docs.json`, agrégée dans le Swagger UI de la passerelle (`http://localhost:3000/docs`).
 
 ---
 
 ## 📡 Endpoints HTTP Exposés
 
-Toutes les routes sont accessibles directement via l'API Gateway sur `http://localhost:3000/auth/...` (ou sur le service autonome `http://localhost:3001/auth/...`) et documentées dans **Swagger UI (`/docs`)**.
+Toutes les routes sont accessibles via la passerelle API (qui les relaie au service auth) sur `http://localhost:3000/auth/...` et documentées dans **Swagger UI (`/docs`)**.
 
 | Méthode | Route | Description | Sécurité & Statuts HTTP |
 | :--- | :--- | :--- | :--- |

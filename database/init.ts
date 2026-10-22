@@ -6,6 +6,7 @@ export interface InitOptions {
   databaseUrl?: string;
   schemaPath?: string;
   seedType?: 'standard' | '10k';
+  seedMode?: SeedMode;
   maxRetries?: number;
   retryIntervalMs?: number;
 }
@@ -92,19 +93,83 @@ export async function waitForDatabase(
   return false;
 }
 
+/** Migration initiale : sert de point de départ aux bases créées avant les migrations (ex-`db push`) */
+export const BASELINE_MIGRATION = '0_init';
+
+/** Clé du verrou PostgreSQL qui empêche deux jobs d'initialisation de tourner en même temps */
+export const INIT_LOCK_KEY = 'epsi-pay-db-init';
+
 /**
- * Applique le schéma Prisma sur la base
+ * Stratégie de seed :
+ * - `if-empty` (défaut) : peuple uniquement une base sans utilisateur → un redémarrage ne touche à rien ;
+ * - `reset` : efface et recrée le jeu de démo (refusé en production sans ALLOW_DATA_RESET=true) ;
+ * - `never` : schéma uniquement.
  */
-export async function pushSchema(schemaPath = 'prisma/schema.prisma'): Promise<StepResult> {
-  console.log(`[DB-INIT] 🚀 Déploiement du schéma Prisma (${schemaPath})...`);
-  return commandRunner.run('npx', [
-    'prisma',
-    'db',
-    'push',
-    `--schema=${schemaPath}`,
-    '--accept-data-loss',
-    '--skip-generate',
-  ]);
+export type SeedMode = 'if-empty' | 'reset' | 'never';
+
+export function resolveSeedMode(env: NodeJS.ProcessEnv = process.env): SeedMode {
+  // Compatibilité avec l'ancienne variable
+  if (env.SKIP_SEED === 'true') return 'never';
+
+  const mode = env.SEED_MODE ?? 'if-empty';
+  if (mode !== 'if-empty' && mode !== 'reset' && mode !== 'never') {
+    throw new Error(`SEED_MODE invalide : "${mode}" (attendu : if-empty, reset ou never).`);
+  }
+  if (mode === 'reset' && env.NODE_ENV === 'production' && env.ALLOW_DATA_RESET !== 'true') {
+    throw new Error('SEED_MODE=reset efface toutes les données : refusé en production sans ALLOW_DATA_RESET=true.');
+  }
+  return mode;
+}
+
+async function tableExists(client: PrismaClient, table: string): Promise<boolean> {
+  const rows = await client.$queryRaw<{ exists: boolean }[]>`SELECT to_regclass(${table}) IS NOT NULL AS "exists"`;
+  return rows[0]?.exists === true;
+}
+
+/**
+ * Applique les migrations versionnées (`prisma migrate deploy`) : jamais de perte de données silencieuse,
+ * contrairement à `db push --accept-data-loss`.
+ *
+ * Une base déjà créée par `db push` (tables présentes, pas d'historique de migrations) est d'abord
+ * marquée comme étant à jour de la migration initiale, sans rien rejouer.
+ */
+export async function deploySchema(client: PrismaClient, schemaPath = 'prisma/schema.prisma'): Promise<StepResult> {
+  const hasHistory = await tableExists(client, '_prisma_migrations');
+  const hasTables = await tableExists(client, 'users');
+
+  if (!hasHistory && hasTables) {
+    console.log(`[DB-INIT] 📌 Base existante sans historique de migrations : rattachement à ${BASELINE_MIGRATION}...`);
+    const baseline = await commandRunner.run('npx', [
+      'prisma',
+      'migrate',
+      'resolve',
+      '--applied',
+      BASELINE_MIGRATION,
+      `--schema=${schemaPath}`,
+    ]);
+    if (!baseline.success) return baseline;
+  }
+
+  console.log(`[DB-INIT] 🚀 Application des migrations Prisma (${schemaPath})...`);
+  return commandRunner.run('npx', ['prisma', 'migrate', 'deploy', `--schema=${schemaPath}`]);
+}
+
+export async function isDatabaseEmpty(client: PrismaClient): Promise<boolean> {
+  return (await client.user.count()) === 0;
+}
+
+/**
+ * Exécute `fn` sous verrou consultatif PostgreSQL (le client doit n'avoir qu'une connexion,
+ * le verrou étant attaché à la session SQL).
+ */
+export async function withInitLock<T>(client: PrismaClient, fn: () => Promise<T>): Promise<T> {
+  console.log('[DB-INIT] 🔒 Acquisition du verrou d\'initialisation...');
+  await client.$executeRaw`SELECT pg_advisory_lock(hashtext(${INIT_LOCK_KEY}))`;
+  try {
+    return await fn();
+  } finally {
+    await client.$executeRaw`SELECT pg_advisory_unlock(hashtext(${INIT_LOCK_KEY}))`;
+  }
 }
 
 /**
@@ -143,36 +208,51 @@ export async function runInitialization(options: InitOptions = {}): Promise<void
   const maxRetries = options.maxRetries ?? (process.env.MAX_RETRIES ? parseInt(process.env.MAX_RETRIES, 10) : 12);
   const retryIntervalMs = options.retryIntervalMs ?? 3000;
 
+  // Une seule connexion : le verrou consultatif est lié à la session SQL qui l'a pris
+  const url = new URL(databaseUrl);
+  url.searchParams.set('connection_limit', '1');
   const prisma = new PrismaClient({
     datasources: {
       db: {
-        url: databaseUrl,
+        url: url.toString(),
       },
     },
   });
 
   try {
+    const seedMode = options.seedMode ?? resolveSeedMode();
+
     // 1. Attente de la base de données
     const isReady = await waitForDatabase(prisma, maxRetries, retryIntervalMs);
     if (!isReady) {
       throw new Error(`PostgreSQL n'a pas répondu après ${maxRetries} tentatives.`);
     }
 
-    // 2. Déploiement du schéma
-    const pushResult = await pushSchema(schemaPath);
-    if (!pushResult.success) {
-      throw new Error(`Échec du déploiement du schéma : ${pushResult.error}`);
-    }
+    await withInitLock(prisma, async () => {
+      // 2. Migrations
+      const deployResult = await deploySchema(prisma, schemaPath);
+      if (!deployResult.success) {
+        throw new Error(`Échec du déploiement des migrations : ${deployResult.error}`);
+      }
 
-    // 3. Peuplement (Seed)
-    if (process.env.SKIP_SEED !== 'true') {
+      // 3. Peuplement (Seed)
+      if (seedMode === 'never') {
+        console.log('[DB-INIT] ⏭️ Étape de seed ignorée (SEED_MODE=never).');
+        return;
+      }
+      if (seedMode === 'if-empty' && !(await isDatabaseEmpty(prisma))) {
+        console.log('[DB-INIT] ⏭️ Base déjà peuplée : seed ignoré, données conservées (SEED_MODE=if-empty).');
+        return;
+      }
+      if (seedMode === 'reset') {
+        console.warn('[DB-INIT] ⚠️ SEED_MODE=reset : toutes les données vont être effacées puis recréées.');
+      }
+
       const seedResult = await seedDatabase(seedType);
       if (!seedResult.success) {
         throw new Error(`Échec du peuplement des données : ${seedResult.error}`);
       }
-    } else {
-      console.log('[DB-INIT] ⏭️ Étape de seed ignorée (SKIP_SEED=true).');
-    }
+    });
 
     console.log('====================================================');
     console.log('   ✅ INITIALISATION BDD TERMINÉE AVEC SUCCÈS');

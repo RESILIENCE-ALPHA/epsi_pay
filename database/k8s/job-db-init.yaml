@@ -34,6 +34,10 @@ spec:
             # Type de seed : "standard" pour un cluster propre ou "10k" pour entraînement ML
             - name: SEED_TYPE
               value: "standard"
+
+            # if-empty : seed uniquement sur base vide → relancer le Job ne détruit jamais les données
+            - name: SEED_MODE
+              value: "if-empty"
             
             # Nombre maximal de tentatives d'attente de PostgreSQL
             - name: MAX_RETRIES
