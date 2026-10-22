@@ -22,9 +22,14 @@ epsi_pay/
 │   ├── src/
 │   └── Dockerfile           # Target of the Brute Force attack (Attacker PC)
 │
-└── payment/                 # 💳 NestJS Payments & Wallets service (port 3002)
+├── payment/                 # 💳 NestJS Payments & Wallets service (port 3002)
+│   ├── src/
+│   └── Dockerfile           # Runs the post-remediation recovery test
+│
+└── frontend/                # 🖥️ React web app: sign up, sign in, payments (port 8080)
     ├── src/
-    └── Dockerfile           # Runs the post-remediation recovery test
+    ├── Dockerfile           # Webpack build served by nginx, which proxies /api/auth and /api/payment
+    └── README.md
 ```
 
 Startup order (Docker Compose):
@@ -32,6 +37,7 @@ Startup order (Docker Compose):
 1. `postgres` starts and becomes *healthy*.
 2. `database` runs `prisma db push` then the seed, and **exits** (code 0).
 3. `auth` and `payment` start once the seeder has completed successfully.
+4. `frontend` (nginx) starts after them.
 
 ---
 
@@ -39,7 +45,7 @@ Startup order (Docker Compose):
 
 - **Runtime**: Node.js 22 LTS (via `.nvmrc`)
 - **Language**: TypeScript
-- **Framework**: NestJS 12 (`auth`, `payment`)
+- **Framework**: NestJS 12 (`auth`, `payment`), React 19 + Webpack 5 (`frontend`)
 - **DBMS**: PostgreSQL 15 (Docker)
 - **ORM**: Prisma ORM v6
 
@@ -56,12 +62,13 @@ The **complete data dictionary**, with every table, column, constraint, role in 
 
 ### ⚡ Run everything (recommended)
 
-Builds the images, starts PostgreSQL, runs the seeder (10,000+ records), then starts `auth` and `payment`:
+Builds the images, starts PostgreSQL, runs the seeder (10,000+ records), then starts `auth`, `payment` and `frontend`:
 
 ```bash
 npm run up
 ```
 
+- Web app: `http://localhost:8080` (sign up, sign in, make a payment — see [`frontend/README.md`](./frontend/README.md))
 - Auth: `http://localhost:3001` (`POST /signup`, `POST /login`, `GET /me`, `POST /logout`, `GET /health`)
 - Payment: `http://localhost:3002` (`POST /payments`, `GET /wallets`, `GET /wallets/:id`, `GET /health`)
 - All seeded accounts share one password, set with `SEED_USER_PASSWORD` (e.g. `SEED_USER_PASSWORD=FakeSeedPassw0rd-Example npm run db:seed`).
@@ -87,6 +94,7 @@ npm run install:all    # Installs the dependencies of the 3 services and generat
 npm run prisma:push    # Syncs the schema with the database (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
 npm --prefix auth run start:dev
 npm --prefix payment run start:dev
+npm run frontend:dev   # http://localhost:3000, proxies to auth (:3001) and payment (:3002)
 ```
 
 After changing `database/prisma/schema.prisma`, run `npm run prisma:generate` again.

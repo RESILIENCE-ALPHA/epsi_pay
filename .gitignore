@@ -5,6 +5,11 @@ build/
 coverage/
 *.tsbuildinfo
 
+# Tool caches (webpack, babel, eslint, npm)
+.cache/
+.eslintcache
+.npm/
+
 # Environment / secrets (keep .env.example)
 .env
 .env.*
@@ -15,6 +20,10 @@ coverage/
 *.p12
 kubeconfig*
 *.kubeconfig
+
+# Database dumps (may contain seeded accounts and password hashes)
+*.dump
+*.sql.gz
 
 # Logs
 *.log
@@ -29,6 +38,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+*.swo
 *~
 
 # Local dev environment

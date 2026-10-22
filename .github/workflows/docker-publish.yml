@@ -1,4 +1,4 @@
-# Construit les images auth, payment et database puis les pousse sur GHCR.
+# Construit les images auth, payment, database et frontend puis les pousse sur GHCR.
 # Tag : <AAAAMMJJ>.<n> (ex. 20261021.42), n = numéro d'exécution du workflow.
 name: Build and push images
 
@@ -40,6 +40,9 @@ jobs:
           - service: database
             context: ./database
             dockerfile: database/Dockerfile
+          - service: frontend
+            context: ./frontend
+            dockerfile: frontend/Dockerfile
     steps:
       - uses: actions/checkout@v4
 

@@ -1,0 +1,42 @@
+# Sert le build React et relaie les appels API vers auth et payment (même origine : pas de CORS à gérer)
+# AUTH_URL et PAYMENT_URL sont injectées au démarrage par l'image nginx (envsubst)
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    location /api/auth/ {
+        proxy_pass ${AUTH_URL}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/payment/ {
+        proxy_pass ${PAYMENT_URL}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok";
+    }
+
+    # Fichiers à hash dans le nom : cache long
+    location ~* \.(js|css|png|svg|ico)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # Routes du SPA (/login, /signup, /pay) : index.html, jamais mis en cache
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri /index.html;
+    }
+}
