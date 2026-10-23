@@ -12,6 +12,9 @@ info:
 
     Errors use the NestJS format; `message` carries a machine-readable code
     (e.g. `INVALID_CREDENTIALS`), or a list of messages for validation errors.
+
+    Every response carries an `X-Request-Id` header (kept from the request if well-formed, otherwise
+    generated), also written to the service's JSON access log. It is not stored in the database.
 servers:
   - url: http://localhost:3001
     description: Docker Compose
@@ -219,6 +222,7 @@ components:
       properties:
         accessToken: { type: string, description: 'Opaque token (32 random bytes, base64url)' }
         tokenType: { type: string, enum: [Bearer] }
+        sessionId: { type: string, format: uuid, description: 'Id of the session (not secret), also written to the payment access log' }
         expiresAt: { type: string, format: date-time }
         user: { $ref: '#/components/schemas/User' }
 
@@ -231,6 +235,7 @@ components:
             - type: object
               properties:
                 status: { $ref: '#/components/schemas/UserStatus' }
+        sessionId: { type: string, format: uuid }
         sessionExpiresAt: { type: string, format: date-time }
 
     User:

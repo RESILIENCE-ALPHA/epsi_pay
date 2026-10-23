@@ -8,6 +8,7 @@ export interface SessionUser {
   id: string;
   email: string;
   role: UserRole;
+  sessionId: string;
 }
 
 type AuthenticatedRequest = Request & { user?: SessionUser };
@@ -31,7 +32,7 @@ export class SessionGuard implements CanActivate {
     }
 
     const { id, email, role } = session.user;
-    request.user = { id, email, role };
+    request.user = { id, email, role, sessionId: session.id };
     return true;
   }
 }

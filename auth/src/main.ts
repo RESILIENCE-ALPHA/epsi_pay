@@ -6,6 +6,7 @@ import { readFileSync } from 'fs';
 import { load } from 'js-yaml';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import { requestIdMiddleware } from './common/request-id';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -15,6 +16,9 @@ async function bootstrap() {
   // (TRUST_PROXY=2 si APISIX est devant le frontend, un CIDR est aussi accepté, vide = désactivé)
   const trustProxy = process.env.TRUST_PROXY ?? '1';
   if (trustProxy) app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+
+  // X-Request-Id sur chaque requête : relie la réponse et les logs d'une même action (non stocké en base)
+  app.use(requestIdMiddleware('auth'));
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.enableShutdownHooks();

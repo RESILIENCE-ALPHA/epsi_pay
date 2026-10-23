@@ -79,7 +79,7 @@ export class AuthService {
     const token = generateToken();
     const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
 
-    await this.prisma.$transaction([
+    const [, session] = await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: user.id },
         data: { failedLoginAttempts: 0, status: UserStatus.ACTIVE, lockedUntil: null },
@@ -110,6 +110,7 @@ export class AuthService {
     return {
       accessToken: token,
       tokenType: 'Bearer',
+      sessionId: session.id,
       expiresAt,
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
     };
@@ -131,7 +132,7 @@ export class AuthService {
     if (!session || !session.isValid || session.expiresAt <= new Date() || session.user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('INVALID_SESSION');
     }
-    return { user: session.user, sessionExpiresAt: session.expiresAt };
+    return { user: session.user, sessionId: session.id, sessionExpiresAt: session.expiresAt };
   }
 
   private async isIpBlocked(ip: string, now: Date): Promise<boolean> {

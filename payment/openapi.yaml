@@ -12,6 +12,9 @@ info:
     Amounts are `Decimal(12,2)`: sent as a JSON number, returned as a string.
     Errors use the NestJS format; `message` carries a machine-readable code
     (e.g. `INSUFFICIENT_FUNDS`), or a list of messages for validation errors.
+
+    Every response carries an `X-Request-Id` header (kept from the request if well-formed, otherwise
+    generated), also written to the service's JSON access log. It is not stored in the database.
 servers:
   - url: http://localhost:3002
     description: Docker Compose
