@@ -1,10 +1,10 @@
 # ==========================================
 # Service Front — image publiée sur GHCR
-# Build depuis la racine : docker build -f front/Dockerfile .
+# Build depuis le dossier front : docker build front/
 # ==========================================
 
 # ------------------------------------------
-# Stage 1: Build Vite (dépendances du workspace front uniquement)
+# Stage 1: Build Vite
 # Fichiers statiques indépendants de l'architecture : construits sur la plateforme native du runner
 # (pas d'émulation QEMU en CI multi-plateforme)
 # ------------------------------------------
@@ -13,13 +13,12 @@ FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-COPY front/package.json front/
 
-RUN npm ci --workspace=front --include-workspace-root=false
+RUN npm ci
 
-COPY front/ front/
+COPY . .
 
-RUN npm run build --workspace=front
+RUN npm run build
 
 # ------------------------------------------
 # Stage 2: nginx non-root (port 8080) : fichiers statiques + relais /api vers la passerelle
@@ -40,8 +39,8 @@ ENV API_UPSTREAM=http://api:3000 \
     NGINX_RESOLVER=127.0.0.11 \
     NGINX_ENVSUBST_FILTER="^(API_UPSTREAM|NGINX_RESOLVER)$"
 
-COPY front/nginx/default.conf.template /etc/nginx/templates/default.conf.template
-COPY --from=builder /app/front/dist /usr/share/nginx/html
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 8080
 
