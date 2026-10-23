@@ -27,7 +27,7 @@ User routes require a token issued by the `auth` service (`Authorization: Bearer
 
 | Method | Route | Description |
 | :--- | :--- | :--- |
-| `POST` | `/payments` | Body `{ senderWalletId, receiverWalletId, amount, description? }`, optional `Idempotency-Key` header. The sender wallet must belong to the user. Codes: `422` insufficient funds / inactive wallet / currency mismatch, `409` concurrent update (retry) or idempotency key already used by another user. |
+| `POST` | `/payments` | Body `{ senderWalletId, receiverWalletId | recipientEmail, amount, description? }` (amount as a number or a decimal string); response `{ payment }`, optional `Idempotency-Key` header. The sender wallet must belong to the user. Codes: `422` insufficient funds / inactive wallet / currency mismatch, `409` concurrent update (retry) or idempotency key already used by another user. |
 | `GET` | `/wallets` | Wallets of the logged-in user. |
 | `GET` | `/wallets/:id` | Balance and last 20 transactions (owner or `ADMIN`). |
 | `POST` | `/payments/test-validation` | Internal route, header `X-Internal-Token: $INTERNAL_API_TOKEN`. Credits €0.01 to the system wallet (`VALIDATION_TEST` transaction). With `{ "incidentId" }`, records the `TEST_PAYMENT_VERIFIED` proof in `remediation_logs`. |

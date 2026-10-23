@@ -11,7 +11,7 @@ export class PaymentsController {
 
   @Post()
   @UseGuards(SessionGuard)
-  create(
+  async create(
     @CurrentUser() user: SessionUser,
     @Body() dto: CreatePaymentDto,
     @Ip() ip: string,
@@ -21,7 +21,8 @@ export class PaymentsController {
     if (idempotencyKey !== undefined && (idempotencyKey.length === 0 || idempotencyKey.length > 255)) {
       throw new BadRequestException('INVALID_IDEMPOTENCY_KEY');
     }
-    return this.paymentsService.create(user, dto, { ip, userAgent }, idempotencyKey);
+    const payment = await this.paymentsService.create(user, dto, { ip, userAgent }, idempotencyKey);
+    return { payment };
   }
 
   @Post('test-validation')

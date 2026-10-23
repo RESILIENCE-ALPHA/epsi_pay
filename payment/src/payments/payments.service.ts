@@ -35,16 +35,27 @@ export class PaymentsService {
       const existing = await this.findByIdempotencyKey(idempotencyKey, user);
       if (existing) return existing;
     }
+    if (dto.receiverWalletId !== undefined && dto.recipientEmail !== undefined) {
+      throw new BadRequestException('RECEIVER_AMBIGUOUS');
+    }
     if (dto.senderWalletId === dto.receiverWalletId) throw new BadRequestException('SAME_WALLET');
 
     const amount = new Prisma.Decimal(dto.amount);
+    if (amount.lte(0)) throw new BadRequestException('INVALID_AMOUNT');
 
     try {
       return await this.prisma.$transaction(async (tx) => {
         const sender = await tx.wallet.findUnique({ where: { id: dto.senderWalletId } });
         if (!sender || sender.userId !== user.id) throw new NotFoundException('SENDER_WALLET_NOT_FOUND');
-        const receiver = await tx.wallet.findUnique({ where: { id: dto.receiverWalletId } });
-        if (!receiver) throw new NotFoundException('RECEIVER_WALLET_NOT_FOUND');
+        // Par e-mail : le wallet actif du destinataire dans la devise de l'émetteur
+        const receiver = dto.recipientEmail
+          ? await tx.wallet.findFirst({
+              where: { user: { email: dto.recipientEmail }, status: WalletStatus.ACTIVE, currency: sender.currency },
+              orderBy: { createdAt: 'asc' },
+            })
+          : await tx.wallet.findUnique({ where: { id: dto.receiverWalletId } });
+        if (!receiver) throw new NotFoundException('RECEIVER_NOT_FOUND');
+        if (receiver.id === sender.id) throw new BadRequestException('SAME_WALLET');
 
         if (sender.status !== WalletStatus.ACTIVE || receiver.status !== WalletStatus.ACTIVE) {
           throw new UnprocessableEntityException('WALLET_NOT_ACTIVE');

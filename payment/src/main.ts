@@ -6,6 +6,7 @@ import { readFileSync } from 'fs';
 import { load } from 'js-yaml';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import { ErrorCodeFilter } from './common/error-code.filter';
 import { requestIdMiddleware } from './common/request-id';
 
 async function bootstrap() {
@@ -19,6 +20,7 @@ async function bootstrap() {
   app.use(requestIdMiddleware('payment'));
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+  app.useGlobalFilters(new ErrorCodeFilter());
   app.enableShutdownHooks();
 
   // Swagger UI sur /docs (JSON sur /docs-json), à partir de la spec maintenue à la main dans openapi.yaml

@@ -28,10 +28,12 @@ paths:
   /payments:
     post:
       tags: [Payments]
-      summary: Pay from one of your wallets to another wallet
+      summary: Pay from one of your wallets to another wallet or to a user by e-mail
       description: |
         Debits the sender wallet and credits the receiver wallet in one database transaction.
         The sender wallet must belong to the caller; both wallets must be `ACTIVE` and in the same currency.
+        The receiver is given either by `receiverWalletId` or by `recipientEmail` (exactly one); with an e-mail,
+        the receiver wallet is that user's `ACTIVE` wallet in the sender wallet's currency.
 
         With an `Idempotency-Key`, a retry with the same key returns the original transaction
         instead of paying twice.
@@ -53,20 +55,23 @@ paths:
           description: Payment done, or the original transaction for a reused `Idempotency-Key`
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Transaction' }
+              schema:
+                type: object
+                properties:
+                  payment: { $ref: '#/components/schemas/Transaction' }
         '400':
-          description: Invalid body, `SAME_WALLET` or `INVALID_IDEMPOTENCY_KEY`
+          description: Invalid body, `INVALID_AMOUNT`, `RECEIVER_AMBIGUOUS`, `SAME_WALLET` or `INVALID_IDEMPOTENCY_KEY`
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { statusCode: 400, message: SAME_WALLET, error: Bad Request }
+              example: { statusCode: 400, message: SAME_WALLET, error: SAME_WALLET }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404':
-          description: '`SENDER_WALLET_NOT_FOUND` (missing or not yours) or `RECEIVER_WALLET_NOT_FOUND`'
+          description: '`SENDER_WALLET_NOT_FOUND` (missing or not yours) or `RECEIVER_NOT_FOUND` (unknown wallet, or no `ACTIVE` wallet in that currency for the e-mail)'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { statusCode: 404, message: SENDER_WALLET_NOT_FOUND, error: Not Found }
+              example: { statusCode: 404, message: SENDER_WALLET_NOT_FOUND, error: SENDER_WALLET_NOT_FOUND }
         '409':
           description: |
             `CONCURRENT_UPDATE_RETRY`: the sender wallet changed during the payment, retry.
@@ -74,13 +79,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { statusCode: 409, message: CONCURRENT_UPDATE_RETRY, error: Conflict }
+              example: { statusCode: 409, message: CONCURRENT_UPDATE_RETRY, error: CONCURRENT_UPDATE_RETRY }
         '422':
           description: '`WALLET_NOT_ACTIVE`, `CURRENCY_MISMATCH` or `INSUFFICIENT_FUNDS`'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { statusCode: 422, message: INSUFFICIENT_FUNDS, error: Unprocessable Entity }
+              example: { statusCode: 422, message: INSUFFICIENT_FUNDS, error: INSUFFICIENT_FUNDS }
 
   /payments/test-validation:
     post:
@@ -111,7 +116,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { statusCode: 403, message: INVALID_INTERNAL_TOKEN, error: Forbidden }
+              example: { statusCode: 403, message: INVALID_INTERNAL_TOKEN, error: INVALID_INTERNAL_TOKEN }
         '404':
           description: Unknown incident (`INCIDENT_NOT_FOUND`)
           content:
@@ -168,7 +173,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { statusCode: 404, message: WALLET_NOT_FOUND, error: Not Found }
+              example: { statusCode: 404, message: WALLET_NOT_FOUND, error: WALLET_NOT_FOUND }
 
   /health:
     get:
@@ -220,7 +225,7 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
-          example: { statusCode: 401, message: INVALID_SESSION, error: Unauthorized }
+          example: { statusCode: 401, message: INVALID_SESSION, error: INVALID_SESSION }
 
   schemas:
     Money:
@@ -231,23 +236,27 @@ components:
 
     CreatePaymentRequest:
       type: object
-      required: [senderWalletId, receiverWalletId, amount]
+      required: [senderWalletId, amount]
       additionalProperties: false
+      description: Exactly one of `receiverWalletId` or `recipientEmail`
       properties:
         senderWalletId: { type: string, format: uuid, description: Must belong to the caller }
         receiverWalletId: { type: string, format: uuid, description: Must differ from the sender }
+        recipientEmail: { type: string, format: email, maxLength: 254, description: Case-insensitive }
         amount:
-          type: number
-          exclusiveMinimum: true
-          minimum: 0
-          maximum: 9999999999.99
-          multipleOf: 0.01
-          description: At most 2 decimal places
+          oneOf:
+            - type: number
+              exclusiveMinimum: true
+              minimum: 0
+              maximum: 9999999999.99
+              multipleOf: 0.01
+            - $ref: '#/components/schemas/Money'
+          description: Greater than 0, at most 2 decimal places, as a JSON number or a decimal string
         description: { type: string, maxLength: 255 }
       example:
         senderWalletId: 3f6c1d2e-8a4b-4c1f-9e2d-1a2b3c4d5e6f
-        receiverWalletId: 9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
-        amount: 42.5
+        recipientEmail: alice@epsi.fr
+        amount: '42.50'
         description: Dinner
 
     TestValidationRequest:
