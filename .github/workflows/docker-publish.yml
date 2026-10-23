@@ -40,9 +40,9 @@ jobs:
           - service: database
             context: ./database
             dockerfile: database/Dockerfile
-          - service: frontend
-            context: ./frontend
-            dockerfile: frontend/Dockerfile
+          - service: front
+            context: ./front
+            dockerfile: front/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
