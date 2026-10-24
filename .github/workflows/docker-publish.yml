@@ -42,7 +42,7 @@ jobs:
             dockerfile: database/Dockerfile
           - service: front
             context: ./front
-            dockerfile: front/Dockerfile
+            dockerfile: Dockerfile
     steps:
       - uses: actions/checkout@v4
 
