@@ -1,16 +1,27 @@
-import { Transform } from 'class-transformer';
-import { IsEmail, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsEmail, IsObject, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf, ValidateNested } from 'class-validator';
 
-export class CreatePaymentDto {
+// Signature passkey (empreinte ou visage vérifié sur l'appareil) obtenue via POST /payments/passkey-options
+export class PasskeyAssertionDto {
+  @IsUUID()
+  challengeId: string;
+
+  // Réponse brute du navigateur (navigator.credentials.get), contrôlée par @simplewebauthn/server
+  @IsObject()
+  response: Record<string, unknown>;
+}
+
+// Contenu du paiement : c'est ce que la passkey signe (POST /payments/passkey-options)
+export class PaymentDetailsDto {
   @IsUUID()
   senderWalletId: string;
 
   // Destinataire : soit son wallet, soit son e-mail (cas du front, qui ne connaît pas les wallets des autres)
-  @ValidateIf((dto: CreatePaymentDto) => dto.recipientEmail === undefined)
+  @ValidateIf((dto: PaymentDetailsDto) => dto.recipientEmail === undefined)
   @IsUUID()
   receiverWalletId?: string;
 
-  @ValidateIf((dto: CreatePaymentDto) => dto.receiverWalletId === undefined)
+  @ValidateIf((dto: PaymentDetailsDto) => dto.receiverWalletId === undefined)
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail()
   @MaxLength(254)
@@ -26,4 +37,12 @@ export class CreatePaymentDto {
   @IsString()
   @MaxLength(255)
   description?: string;
+}
+
+export class CreatePaymentDto extends PaymentDetailsDto {
+  // Obligatoire dès que l'utilisateur a enregistré au moins une passkey
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PasskeyAssertionDto)
+  passkey?: PasskeyAssertionDto;
 }

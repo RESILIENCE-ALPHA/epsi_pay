@@ -23,6 +23,8 @@ async function main() {
   console.log('🌱 Seeding database avec les données du scénario RESILIENCE-ALPHA...');
 
   // Nettoyage complet dans l'ordre pour respecter les contraintes de clés étrangères
+  await prisma.passkeyChallenge.deleteMany();
+  await prisma.passkey.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.remediationLog.deleteMany();
   await prisma.incident.deleteMany();

@@ -1,11 +1,19 @@
 import { getToken } from './session';
 import { reportService, type ServiceName } from './serviceStatus';
+import type { AuthenticationResponseJSON } from '@simplewebauthn/browser';
 import type {
   ApiErrorBody,
   HistoryEntry,
   LoginSuccess,
+  Passkey,
+  PasskeyChallenge,
   Payment,
+  PaymentDetails,
+  PaymentPasskeyOptions,
   PaymentRequest,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
   User,
   Wallet,
 } from './types';
@@ -17,6 +25,14 @@ const REQUEST_TIMEOUT_MS = 15_000;
 /** Statuts signifiant « service momentanément indisponible » (passerelle ou nginx devant elle) */
 const UNAVAILABLE_STATUSES = new Set([502, 503, 504]);
 const SERVICES: ServiceName[] = ['auth', 'payment', 'api'];
+
+/** Code d'erreur métier : dans `error` (payment, passerelle) ou dans `message` (auth, format Nest par défaut) */
+const ERROR_CODE = /^[A-Z][A-Z0-9_]+$/;
+function errorCode(payload: ApiErrorBody, status: number): string {
+  if (payload.error && ERROR_CODE.test(payload.error)) return payload.error;
+  if (typeof payload.message === 'string' && ERROR_CODE.test(payload.message)) return payload.message;
+  return payload.error ?? `HTTP_${status}`;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -97,7 +113,7 @@ async function request<T>(path: string, { method = 'GET', body, headers = {}, se
     if (response.status === 401 && token) unauthorizedListeners.forEach((listener) => listener());
     throw new ApiError(
       response.status,
-      payload.error ?? `HTTP_${response.status}`,
+      errorCode(payload, response.status),
       payload.message ?? 'Une erreur inattendue est survenue.',
       payload,
     );
@@ -126,6 +142,50 @@ export const api = {
       `/wallets/${encodeURIComponent(walletId)}?limit=${limit}`,
       { service: 'payment' },
     ),
+
+  // --- Passkeys (auth) : empreinte digitale / reconnaissance faciale vérifiées par l'appareil ---
+
+  passkeyLoginOptions: () =>
+    request<PasskeyChallenge<PublicKeyCredentialRequestOptionsJSON>>('/auth/passkeys/login/options', {
+      method: 'POST',
+      service: 'auth',
+      auth: false,
+    }),
+
+  passkeyLogin: (challengeId: string, response: AuthenticationResponseJSON) =>
+    request<LoginSuccess>('/auth/passkeys/login/verify', {
+      method: 'POST',
+      body: { challengeId, response },
+      service: 'auth',
+      auth: false,
+    }),
+
+  listPasskeys: () => request<{ passkeys: Passkey[] }>('/auth/passkeys', { service: 'auth' }),
+
+  passkeyRegistrationOptions: (password: string) =>
+    request<PasskeyChallenge<PublicKeyCredentialCreationOptionsJSON>>('/auth/passkeys/register/options', {
+      method: 'POST',
+      body: { password },
+      service: 'auth',
+    }),
+
+  registerPasskey: (challengeId: string, response: RegistrationResponseJSON, name?: string) =>
+    request<{ passkey: Passkey }>('/auth/passkeys/register/verify', {
+      method: 'POST',
+      body: { challengeId, response, ...(name ? { name } : {}) },
+      service: 'auth',
+    }),
+
+  revokePasskey: (passkeyId: string, password: string) =>
+    request<void>(`/auth/passkeys/${encodeURIComponent(passkeyId)}/revoke`, {
+      method: 'POST',
+      body: { password },
+      service: 'auth',
+    }),
+
+  /** Défi à signer avant de payer, lié au contenu exact du paiement */
+  paymentPasskeyOptions: (payment: PaymentDetails) =>
+    request<PaymentPasskeyOptions>('/payments/passkey-options', { method: 'POST', body: payment, service: 'payment' }),
 
   createPayment: (payment: PaymentRequest, idempotencyKey: string) =>
     request<{ payment: Payment }>('/payments', {

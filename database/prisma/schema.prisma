@@ -40,8 +40,52 @@ model User {
   sessions      Session[]
   loginAttempts LoginAttempt[]
   auditLogs     AuditLog[]
+  passkeys      Passkey[]
+  passkeyChallenges PasskeyChallenge[]
 
   @@map("users")
+}
+
+// Passkey (WebAuthn) : l'empreinte digitale ou le visage est vérifié sur l'appareil (Touch ID, Face ID,
+// Windows Hello, Android). Aucune donnée biométrique n'arrive ici : seulement la clé publique de l'appareil.
+model Passkey {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String    @unique // base64url, choisi par l'appareil
+  publicKey    Bytes     // clé publique COSE : sert à vérifier les signatures, n'est pas un secret
+  counter      BigInt    @default(0) // compteur de signatures (uint32), détecte un clone de la clé
+  transports   String[]  // "internal", "hybrid", "usb"... aide le navigateur à proposer le bon appareil
+  deviceType   String    // "singleDevice" ou "multiDevice" (passkey synchronisée iCloud/Google)
+  backedUp     Boolean   @default(false)
+  name         String?   // libellé choisi par l'utilisateur, ex: "iPhone de Karim"
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+  @@map("passkeys")
+}
+
+enum PasskeyChallengePurpose {
+  REGISTRATION // ajout d'une passkey
+  LOGIN        // connexion sans mot de passe
+  PAYMENT      // validation forte d'un paiement
+}
+
+// Défi WebAuthn à usage unique, valable quelques minutes (anti-rejeu)
+model PasskeyChallenge {
+  id          String                  @id @default(uuid())
+  challenge   String                  // base64url, signé par l'appareil
+  purpose     PasskeyChallengePurpose
+  userId      String?                 // null pour LOGIN : l'utilisateur est inconnu avant la signature
+  user        User?                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentHash String?                 // PAYMENT : empreinte SHA-256 du paiement validé (émetteur, destinataire, montant, note)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime                @default(now())
+
+  @@index([expiresAt])
+  @@map("passkey_challenges")
 }
 
 // Enregistrement de chaque tentative de connexion (alimente le Machine Learning)

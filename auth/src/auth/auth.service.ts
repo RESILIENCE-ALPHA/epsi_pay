@@ -11,7 +11,9 @@ const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MINUTES ?? 60) * 60_000;
 // Comparé quand l'email est inconnu, pour que le temps de réponse ne révèle pas l'existence du compte
 const DUMMY_HASH = bcrypt.hashSync('dummy-password', 10);
 
-type FailureReason = 'INVALID_CREDENTIALS' | 'ACCOUNT_LOCKED' | 'IP_BLOCKED';
+type FailureReason = 'INVALID_CREDENTIALS' | 'ACCOUNT_LOCKED' | 'IP_BLOCKED' | 'INVALID_PASSKEY';
+
+export type AuthMethod = 'PASSWORD' | 'PASSKEY';
 
 export interface ClientContext {
   ip: string;
@@ -76,6 +78,11 @@ export class AuthService {
       throw new UnauthorizedException('INVALID_CREDENTIALS');
     }
 
+    return this.openSession(user, client, now, 'PASSWORD');
+  }
+
+  // Session ouverte après une authentification réussie (mot de passe ou passkey)
+  async openSession(user: User, client: ClientContext, now: Date, method: AuthMethod) {
     const token = generateToken();
     const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
 
@@ -95,7 +102,7 @@ export class AuthService {
       }),
       this.prisma.loginAttempt.create({
         data: {
-          attemptedEmail: email,
+          attemptedEmail: user.email,
           targetUserId: user.id,
           ipAddress: client.ip,
           userAgent: client.userAgent,
@@ -103,7 +110,13 @@ export class AuthService {
         },
       }),
       this.prisma.auditLog.create({
-        data: { userId: user.id, action: 'USER_LOGIN_SUCCESS', severity: AuditSeverity.INFO, ipAddress: client.ip },
+        data: {
+          userId: user.id,
+          action: 'USER_LOGIN_SUCCESS',
+          severity: AuditSeverity.INFO,
+          ipAddress: client.ip,
+          details: { method },
+        },
       }),
     ]);
 
@@ -114,6 +127,19 @@ export class AuthService {
       expiresAt,
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
     };
+  }
+
+  // Mot de passe redemandé avant une opération sensible (ajout/suppression de passkey).
+  // Un échec compte comme une tentative de connexion ratée : même seuil de verrouillage.
+  // 403 et non 401 : le front interprète 401 comme une session expirée.
+  async confirmPassword(userId: string, password: string, client: ClientContext): Promise<User> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const valid = await bcrypt.compare(password, user.passwordHash).catch(() => false);
+    if (!valid) {
+      await this.registerFailure(user, client, new Date());
+      throw new ForbiddenException('INVALID_PASSWORD');
+    }
+    return user;
   }
 
   async logout(token: string) {
@@ -135,14 +161,14 @@ export class AuthService {
     return { user: session.user, sessionId: session.id, sessionExpiresAt: session.expiresAt };
   }
 
-  private async isIpBlocked(ip: string, now: Date): Promise<boolean> {
+  async isIpBlocked(ip: string, now: Date): Promise<boolean> {
     const blocked = await this.prisma.blockedIp.findFirst({
       where: { ipAddress: ip, isActive: true, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
     });
     return blocked !== null;
   }
 
-  private isLocked(user: User, now: Date): boolean {
+  isLocked(user: User, now: Date): boolean {
     if (user.status === UserStatus.SUSPENDED) return true;
     if (user.status !== UserStatus.LOCKED) return false;
     // LOCKED sans date de fin = verrouillage manuel ; sinon déverrouillage automatique à l'échéance
@@ -177,7 +203,7 @@ export class AuthService {
     await this.recordAttempt(user.email, user.id, client, 'INVALID_CREDENTIALS');
   }
 
-  private recordAttempt(email: string, userId: string | null, client: ClientContext, failureReason: FailureReason) {
+  recordAttempt(email: string, userId: string | null, client: ClientContext, failureReason: FailureReason) {
     return this.prisma.loginAttempt.create({
       data: {
         attemptedEmail: email,

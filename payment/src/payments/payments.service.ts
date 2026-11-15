@@ -11,6 +11,7 @@ import { randomBytes } from 'crypto';
 import { SessionUser } from '../common/session.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { PasskeyConfirmationService } from './passkey-confirmation.service';
 
 const SYSTEM_BOT_EMAIL = process.env.SYSTEM_BOT_EMAIL ?? 'system-bot@epsi-pay.internal';
 const VALIDATION_TEST_AMOUNT = new Prisma.Decimal('0.01');
@@ -28,7 +29,10 @@ function generateReference(): string {
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passkeyConfirmation: PasskeyConfirmationService,
+  ) {}
 
   async create(user: SessionUser, dto: CreatePaymentDto, client: ClientContext, idempotencyKey?: string) {
     if (idempotencyKey) {
@@ -42,6 +46,10 @@ export class PaymentsService {
 
     const amount = new Prisma.Decimal(dto.amount);
     if (amount.lte(0)) throw new BadRequestException('INVALID_AMOUNT');
+
+    // Passkey exigée si l'utilisateur en a enregistré une (empreinte ou visage vérifié sur son appareil)
+    const { passkey, ...details } = dto;
+    const strongAuth = await this.passkeyConfirmation.verify(user, details, passkey);
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -88,6 +96,7 @@ export class PaymentsService {
             receiverWalletId: receiver.id,
             clientIp: client.ip,
             userAgent: client.userAgent,
+            metadata: strongAuth ? { strongAuth } : undefined,
           },
         });
 
@@ -98,6 +107,7 @@ export class PaymentsService {
             action: 'TRANSACTION_AUTHORIZED',
             severity: AuditSeverity.INFO,
             ipAddress: client.ip,
+            details: { strongAuth: strongAuth ?? 'NONE' },
           },
         });
 

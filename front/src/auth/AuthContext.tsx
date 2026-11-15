@@ -1,7 +1,8 @@
+import { startAuthentication } from '@simplewebauthn/browser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, onUnauthorized } from '../api/client';
 import { getSession, saveSession } from '../api/session';
-import type { User } from '../api/types';
+import type { LoginSuccess, User } from '../api/types';
 
 type AuthState =
   | { status: 'anonymous'; reason?: 'expired' | 'logout' }
@@ -10,6 +11,8 @@ type AuthState =
 interface AuthContextValue {
   state: AuthState;
   login: (email: string, password: string) => Promise<void>;
+  /** Connexion par empreinte digitale ou reconnaissance faciale (passkey), sans e-mail ni mot de passe */
+  loginWithPasskey: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -52,13 +55,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const login = useCallback(async (email: string, password: string) => {
-    const result = await api.login(email, password);
+  const openSession = useCallback((result: LoginSuccess) => {
     const token = result.accessToken ?? result.token;
     if (!token) throw new Error('Réponse de connexion sans jeton');
     saveSession({ token, user: result.user });
     setState({ status: 'authenticated', user: result.user });
   }, []);
+
+  const login = useCallback(
+    async (email: string, password: string) => openSession(await api.login(email, password)),
+    [openSession],
+  );
+
+  const loginWithPasskey = useCallback(async () => {
+    const { challengeId, options } = await api.passkeyLoginOptions();
+    // Le navigateur affiche Touch ID / Face ID / Windows Hello ; seule la signature revient
+    const response = await startAuthentication({ optionsJSON: options });
+    openSession(await api.passkeyLogin(challengeId, response));
+  }, [openSession]);
 
   const logout = useCallback(async () => {
     try {
@@ -71,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ state, login, logout }), [state, login, logout]);
+  const value = useMemo(() => ({ state, login, loginWithPasskey, logout }), [state, login, loginWithPasskey, logout]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

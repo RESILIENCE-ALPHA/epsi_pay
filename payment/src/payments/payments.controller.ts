@@ -1,13 +1,26 @@
 import { BadRequestException, Body, Controller, Headers, HttpCode, Ip, Post, UseGuards } from '@nestjs/common';
 import { InternalTokenGuard } from '../common/internal-token.guard';
 import { CurrentUser, SessionGuard, SessionUser } from '../common/session.guard';
-import { CreatePaymentDto } from './dto/create-payment.dto';
+import { CreatePaymentDto, PaymentDetailsDto } from './dto/create-payment.dto';
+import { PasskeyConfirmationService } from './passkey-confirmation.service';
 import { TestValidationDto } from './dto/test-validation.dto';
 import { PaymentsService } from './payments.service';
 
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    private readonly passkeyConfirmation: PasskeyConfirmationService,
+  ) {}
+
+  // À appeler avant POST /payments : indique si une passkey est exigée et fournit le défi à signer,
+  // lié au contenu exact du paiement
+  @Post('passkey-options')
+  @HttpCode(200)
+  @UseGuards(SessionGuard)
+  passkeyOptions(@CurrentUser() user: SessionUser, @Body() dto: PaymentDetailsDto) {
+    return this.passkeyConfirmation.options(user, dto);
+  }
 
   @Post()
   @UseGuards(SessionGuard)

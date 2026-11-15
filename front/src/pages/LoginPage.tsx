@@ -5,11 +5,14 @@ import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Logo';
 import { ServiceBanner } from '../components/ServiceBanner';
 import { Alert, Button, Field } from '../components/ui';
-import { Activity, Eye, EyeOff, ShieldCheck, Zap } from '../components/icons';
+import { Activity, Eye, EyeOff, Fingerprint, ShieldCheck, Zap } from '../components/icons';
 import { formatTime } from '../lib/format';
+import { describePasskeyPromptError, passkeysSupported } from '../lib/passkeys';
 
 /** Traduit un refus de connexion en message clair, sans révéler d'information exploitable */
 function describeLoginError(error: unknown): { tone: 'danger' | 'warning' | 'locked'; title: string; body?: ReactNode } {
+  const promptError = describePasskeyPromptError(error);
+  if (promptError) return { tone: 'warning', title: promptError };
   if (!(error instanceof ApiError)) {
     return { tone: 'warning', title: 'Une erreur inattendue est survenue.', body: 'Réessayez dans un instant.' };
   }
@@ -48,6 +51,14 @@ function describeLoginError(error: unknown): { tone: 'danger' | 'warning' | 'loc
             : undefined,
       };
     }
+    case 'INVALID_PASSKEY':
+      return {
+        tone: 'danger',
+        title: 'Passkey non reconnue.',
+        body: 'Elle a peut-être été supprimée de votre compte. Connectez-vous avec votre mot de passe.',
+      };
+    case 'PASSKEY_CHALLENGE_INVALID':
+      return { tone: 'warning', title: 'La demande a expiré.', body: 'Réessayez la connexion par passkey.' };
     case 'INVALID_INPUT':
       return { tone: 'warning', title: 'Renseignez votre e-mail et votre mot de passe.' };
     default:
@@ -62,13 +73,15 @@ const HIGHLIGHTS = [
 ];
 
 export function LoginPage() {
-  const { state, login } = useAuth();
+  const { state, login, loginWithPasskey } = useAuth();
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [passkeyPending, setPasskeyPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [canUsePasskey] = useState(passkeysSupported);
 
   if (state.status === 'authenticated') {
     const from = (location.state as { from?: string } | null)?.from ?? '/';
@@ -86,6 +99,18 @@ export function LoginPage() {
       setPassword('');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handlePasskey = async () => {
+    setPasskeyPending(true);
+    setError(null);
+    try {
+      await loginWithPasskey();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setPasskeyPending(false);
     }
   };
 
@@ -183,10 +208,41 @@ export function LoginPage() {
                 }
               />
 
-              <Button type="submit" size="lg" className="w-full" loading={submitting} disabled={!email || !password}>
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full"
+                loading={submitting}
+                disabled={!email || !password || passkeyPending}
+              >
                 Se connecter
               </Button>
             </form>
+
+            {canUsePasskey && (
+              <div className="mt-6">
+                <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-white/30">
+                  <span className="h-px flex-1 bg-white/[0.08]" />
+                  ou
+                  <span className="h-px flex-1 bg-white/[0.08]" />
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="lg"
+                  className="mt-6 w-full"
+                  icon={<Fingerprint />}
+                  loading={passkeyPending}
+                  disabled={submitting}
+                  onClick={() => void handlePasskey()}
+                >
+                  Empreinte ou Face ID
+                </Button>
+                <p className="mt-3 text-center text-xs leading-relaxed text-muted">
+                  Avec une passkey ajoutée depuis l’onglet Sécurité. Votre empreinte et votre visage restent sur votre appareil.
+                </p>
+              </div>
+            )}
 
             {import.meta.env.DEV && (
               <p className="mt-8 rounded-2xl border border-dashed border-white/10 p-4 text-xs leading-relaxed text-muted">

@@ -29,6 +29,8 @@ async function generate10kData() {
 
   // 2. Nettoyage rapide préalable
   console.log('🧹 Nettoyage des tables existantes...');
+  await prisma.passkeyChallenge.deleteMany();
+  await prisma.passkey.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.remediationLog.deleteMany();
   await prisma.incident.deleteMany();

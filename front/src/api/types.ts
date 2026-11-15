@@ -1,4 +1,12 @@
 // Contrats des réponses de la passerelle (voir /docs sur l'API)
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/browser';
+
+export type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON };
 
 export type UserRole = 'CLIENT' | 'MERCHANT' | 'ADMIN';
 export type UserStatus = 'ACTIVE' | 'LOCKED' | 'SUSPENDED';
@@ -58,11 +66,43 @@ export interface HistoryEntry extends Payment {
   counterparty: Counterparty | null;
 }
 
-export interface PaymentRequest {
+export interface PaymentDetails {
   senderWalletId: string;
   recipientEmail: string;
   amount: string;
   description?: string;
+}
+
+/** Signature passkey liée au paiement (empreinte ou visage vérifié sur l'appareil) */
+export interface PasskeyAssertion {
+  challengeId: string;
+  response: AuthenticationResponseJSON;
+}
+
+export interface PaymentRequest extends PaymentDetails {
+  passkey?: PasskeyAssertion;
+}
+
+/** Réponse de POST /payments/passkey-options : validation par passkey exigée ou non pour ce paiement */
+export type PaymentPasskeyOptions =
+  | { required: false }
+  | { required: true; challengeId: string; options: PublicKeyCredentialRequestOptionsJSON };
+
+/** Passkey enregistrée : aucune donnée biométrique, seulement des métadonnées de l'appareil */
+export interface Passkey {
+  id: string;
+  name: string | null;
+  /** multiDevice : synchronisée (trousseau iCloud, gestionnaire Google...) */
+  deviceType: 'singleDevice' | 'multiDevice';
+  backedUp: boolean;
+  transports: string[];
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface PasskeyChallenge<T> {
+  challengeId: string;
+  options: T;
 }
 
 /** Corps d'erreur commun aux services ({ error, message }) et champs propres à la connexion */
