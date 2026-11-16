@@ -14,6 +14,7 @@ import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
+  SignupSuccess,
   User,
   Wallet,
 } from './types';
@@ -128,6 +129,14 @@ export function newIdempotencyKey(): string {
 }
 
 export const api = {
+  signup: (email: string, password: string, name?: string) =>
+    request<SignupSuccess>('/auth/signup', {
+      method: 'POST',
+      body: { email, password, ...(name ? { name } : {}) },
+      service: 'auth',
+      auth: false,
+    }),
+
   login: (email: string, password: string) =>
     request<LoginSuccess>('/auth/login', { method: 'POST', body: { email, password }, service: 'auth', auth: false }),
 

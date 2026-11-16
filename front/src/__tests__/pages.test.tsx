@@ -84,6 +84,70 @@ describe('Écrans', () => {
     });
   });
 
+  describe('Inscription', () => {
+    const fill = async (password = 'Password123456', confirmation = password) => {
+      const user = userEvent.setup();
+      renderAt('/inscription');
+      await user.type(screen.getByLabelText('Adresse e-mail'), 'carol@epsi.fr');
+      await user.type(screen.getByLabelText('Mot de passe'), password);
+      await user.type(screen.getByLabelText('Confirmer le mot de passe'), confirmation);
+      await user.click(screen.getByRole('button', { name: 'Créer mon compte' }));
+      return user;
+    };
+
+    it('doit refuser un mot de passe trop faible sans appeler l’API', async () => {
+      await fill('court');
+
+      expect(await screen.findByText(/au moins 12 caractères/)).toBeInTheDocument();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('doit refuser une confirmation différente sans appeler l’API', async () => {
+      await fill('Password123456', 'Password123457');
+
+      expect(await screen.findByText(/ne correspondent pas/)).toBeInTheDocument();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('doit signaler une adresse e-mail déjà utilisée', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(409, { error: 'EMAIL_ALREADY_USED', message: 'E-mail déjà utilisé.' }));
+      await fill();
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Un compte utilise déjà cette adresse e-mail.');
+    });
+
+    it('doit créer le compte puis ouvrir la session', async () => {
+      const calls: string[] = [];
+      fetchMock.mockImplementation(async (url: string) => {
+        calls.push(url);
+        if (url === '/api/auth/signup') {
+          return jsonResponse(201, { id: 'u9', email: 'carol@epsi.fr', name: null, role: 'CLIENT', wallets: [] });
+        }
+        if (url === '/api/auth/login') return jsonResponse(200, { success: true, token: 't', expiresAt: '', user: ALICE });
+        if (url === '/api/wallets') return jsonResponse(200, { wallets: [WALLET] });
+        return jsonResponse(200, { wallet: WALLET, transactions: [] });
+      });
+      await fill();
+
+      expect(await screen.findByText('Bonjour, Alice')).toBeInTheDocument();
+      expect(calls.slice(0, 2)).toEqual(['/api/auth/signup', '/api/auth/login']);
+    });
+
+    it('doit dire que le compte existe quand la connexion qui suit échoue', async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url === '/api/auth/signup') {
+          return jsonResponse(201, { id: 'u9', email: 'carol@epsi.fr', name: null, role: 'CLIENT', wallets: [] });
+        }
+        return jsonResponse(503, { error: 'SERVICE_UNAVAILABLE', service: 'auth', message: 'Indisponible.' });
+      });
+      await fill();
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Votre compte est créé.');
+      expect(screen.getByRole('link', { name: 'Connectez-vous' })).toHaveAttribute('href', '/connexion');
+    });
+  });
+
   it('doit rediriger vers la connexion sans session', () => {
     renderAt('/payer');
     expect(screen.getByRole('heading', { name: 'Connexion' })).toBeInTheDocument();

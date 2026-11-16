@@ -6,6 +6,7 @@ import { Logo } from './components/Logo';
 import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { PayPage } from './pages/PayPage';
+import { SignupPage } from './pages/SignupPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { state } = useAuth();
@@ -38,6 +39,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/connexion" element={<LoginPage />} />
+      <Route path="/inscription" element={<SignupPage />} />
       <Route
         element={
           <RequireAuth>

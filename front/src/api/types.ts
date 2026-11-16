@@ -29,6 +29,18 @@ export interface LoginSuccess {
   user: User;
 }
 
+/**
+ * Réponse de POST /auth/signup : le compte et son portefeuille EUR, mais aucun jeton.
+ * La session est ouverte ensuite par un login classique (voir AuthContext.signup).
+ */
+export interface SignupSuccess {
+  id: string;
+  email: string;
+  name: string | null;
+  role: UserRole;
+  wallets: { id: string; currency: string; balance: string }[];
+}
+
 export interface Wallet {
   id: string;
   currency: string;

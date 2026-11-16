@@ -10,6 +10,8 @@ type AuthState =
 
 interface AuthContextValue {
   state: AuthState;
+  /** Crée le compte puis ouvre la session : auth ne renvoie pas de jeton à l'inscription */
+  signup: (email: string, password: string, name?: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   /** Connexion par empreinte digitale ou reconnaissance faciale (passkey), sans e-mail ni mot de passe */
   loginWithPasskey: () => Promise<void>;
@@ -17,6 +19,18 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+/**
+ * Compte créé, mais la connexion qui suit a échoué (auth indisponible, limite de requêtes
+ * atteinte...). À distinguer d'un échec d'inscription : l'e-mail est déjà pris, il ne faut pas
+ * inviter l'utilisateur à recommencer l'inscription.
+ */
+export class SignupSessionError extends Error {
+  constructor(readonly cause: unknown) {
+    super('Compte créé, session non ouverte');
+    this.name = 'SignupSessionError';
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(() => {
@@ -67,6 +81,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [openSession],
   );
 
+  // POST /auth/signup crée le compte et son portefeuille mais ne renvoie pas de jeton : le login
+  // qui suit est ce qui ouvre la session. S'il échoue, le compte existe quand même et l'appelant
+  // renvoie vers la connexion plutôt que de laisser croire à un échec de l'inscription.
+  const signup = useCallback(
+    async (email: string, password: string, name?: string) => {
+      await api.signup(email, password, name);
+      try {
+        await login(email, password);
+      } catch (error) {
+        throw new SignupSessionError(error);
+      }
+    },
+    [login],
+  );
+
   const loginWithPasskey = useCallback(async () => {
     const { challengeId, options } = await api.passkeyLoginOptions();
     // Le navigateur affiche Touch ID / Face ID / Windows Hello ; seule la signature revient
@@ -85,7 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ state, login, loginWithPasskey, logout }), [state, login, loginWithPasskey, logout]);
+  const value = useMemo(
+    () => ({ state, signup, login, loginWithPasskey, logout }),
+    [state, signup, login, loginWithPasskey, logout],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

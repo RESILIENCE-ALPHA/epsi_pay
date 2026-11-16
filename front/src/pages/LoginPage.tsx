@@ -1,11 +1,10 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { Logo } from '../components/Logo';
-import { ServiceBanner } from '../components/ServiceBanner';
+import { AuthShell } from '../components/AuthShell';
 import { Alert, Button, Field } from '../components/ui';
-import { Activity, Eye, EyeOff, Fingerprint, ShieldCheck, Zap } from '../components/icons';
+import { Eye, EyeOff, Fingerprint } from '../components/icons';
 import { formatTime } from '../lib/format';
 import { describePasskeyPromptError, passkeysSupported } from '../lib/passkeys';
 
@@ -66,12 +65,6 @@ function describeLoginError(error: unknown): { tone: 'danger' | 'warning' | 'loc
   }
 }
 
-const HIGHLIGHTS = [
-  { icon: <Zap />, title: 'Paiements instantanés', text: 'Envoyez de l’argent à n’importe quel compte EPSI Pay avec une simple adresse e-mail.' },
-  { icon: <ShieldCheck />, title: 'Sécurité active', text: 'Détection des attaques en temps réel et blocage automatique des accès suspects.' },
-  { icon: <Activity />, title: 'Toujours disponible', text: 'Une plateforme qui se rétablit seule : aucun paiement perdu, jamais de double débit.' },
-];
-
 export function LoginPage() {
   const { state, login, loginWithPasskey } = useAuth();
   const location = useLocation();
@@ -118,141 +111,105 @@ export function LoginPage() {
   const expired = state.status === 'anonymous' && state.reason === 'expired';
 
   return (
-    <div className="flex min-h-screen flex-col bg-ink-950">
-      <ServiceBanner />
-      <div className="grid flex-1 lg:grid-cols-[1.1fr_1fr]">
-        {/* Panneau de présentation */}
-        <aside className="relative hidden overflow-hidden border-r border-white/[0.06] bg-ink-900 lg:flex lg:flex-col lg:justify-between lg:p-12">
-          <div className="pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-brand-500/25 blur-[120px]" />
-          <div className="pointer-events-none absolute -bottom-48 right-0 h-[420px] w-[420px] rounded-full bg-sky-400/10 blur-[120px]" />
+    <AuthShell>
+      <h2 className="text-3xl font-bold tracking-tight text-white">Connexion</h2>
+      <p className="mt-2 text-muted">Accédez à votre compte EPSI Pay.</p>
 
-          <Logo className="relative text-[40px] text-white" />
+      <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
+        {expired && !feedback && (
+          <Alert tone="locked" title="Votre session a expiré.">
+            Reconnectez-vous pour continuer.
+          </Alert>
+        )}
+        {feedback && (
+          <Alert tone={feedback.tone} title={feedback.title}>
+            {feedback.body}
+          </Alert>
+        )}
 
-          <div className="relative max-w-md">
-            <h1 className="text-5xl font-bold leading-[1.05] tracking-tight text-white">
-              L&rsquo;argent circule.
-              <br />
-              <span className="bg-gradient-to-r from-brand-300 to-brand-500 bg-clip-text text-transparent">
-                La sécurité reste.
-              </span>
-            </h1>
-            <ul className="mt-10 space-y-6">
-              {HIGHLIGHTS.map((item) => (
-                <li key={item.title} className="flex gap-4">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/[0.06] text-lg text-brand-300">
-                    {item.icon}
-                  </span>
-                  <div>
-                    <p className="font-semibold text-white">{item.title}</p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-muted">{item.text}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+        <Field
+          label="Adresse e-mail"
+          name="email"
+          type="email"
+          autoComplete="username"
+          inputMode="email"
+          placeholder="vous@exemple.fr"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          required
+          autoFocus
+        />
+
+        <Field
+          label="Mot de passe"
+          name="password"
+          type={showPassword ? 'text' : 'password'}
+          autoComplete="current-password"
+          placeholder="••••••••••"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          required
+          trailing={
+            <button
+              type="button"
+              onClick={() => setShowPassword((visible) => !visible)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-lg text-muted hover:bg-white/5 hover:text-white"
+              aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+            >
+              {showPassword ? <EyeOff /> : <Eye />}
+            </button>
+          }
+        />
+
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          loading={submitting}
+          disabled={!email || !password || passkeyPending}
+        >
+          Se connecter
+        </Button>
+      </form>
+
+      {canUsePasskey && (
+        <div className="mt-6">
+          <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-white/30">
+            <span className="h-px flex-1 bg-white/[0.08]" />
+            ou
+            <span className="h-px flex-1 bg-white/[0.08]" />
           </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className="mt-6 w-full"
+            icon={<Fingerprint />}
+            loading={passkeyPending}
+            disabled={submitting}
+            onClick={() => void handlePasskey()}
+          >
+            Empreinte ou Face ID
+          </Button>
+          <p className="mt-3 text-center text-xs leading-relaxed text-muted">
+            Avec une passkey ajoutée depuis l’onglet Sécurité. Votre empreinte et votre visage restent sur votre appareil.
+          </p>
+        </div>
+      )}
 
-          <p className="relative text-xs text-white/30">Projet Workshop EPSI · RESILIENCE-ALPHA</p>
-        </aside>
+      <p className="mt-8 text-center text-sm text-muted">
+        Pas encore de compte ?{' '}
+        <Link to="/inscription" className="font-semibold text-brand-300 transition hover:text-brand-200">
+          Créer un compte
+        </Link>
+      </p>
 
-        {/* Formulaire */}
-        <section className="flex items-center justify-center px-4 py-12 sm:px-8">
-          <div className="w-full max-w-[400px]">
-            <Logo className="mb-10 text-[34px] text-white lg:hidden" />
-
-            <h2 className="text-3xl font-bold tracking-tight text-white">Connexion</h2>
-            <p className="mt-2 text-muted">Accédez à votre compte EPSI Pay.</p>
-
-            <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
-              {expired && !feedback && (
-                <Alert tone="locked" title="Votre session a expiré.">
-                  Reconnectez-vous pour continuer.
-                </Alert>
-              )}
-              {feedback && (
-                <Alert tone={feedback.tone} title={feedback.title}>
-                  {feedback.body}
-                </Alert>
-              )}
-
-              <Field
-                label="Adresse e-mail"
-                name="email"
-                type="email"
-                autoComplete="username"
-                inputMode="email"
-                placeholder="vous@exemple.fr"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-                autoFocus
-              />
-
-              <Field
-                label="Mot de passe"
-                name="password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                placeholder="••••••••••"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-                trailing={
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((visible) => !visible)}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl text-lg text-muted hover:bg-white/5 hover:text-white"
-                    aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                  >
-                    {showPassword ? <EyeOff /> : <Eye />}
-                  </button>
-                }
-              />
-
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full"
-                loading={submitting}
-                disabled={!email || !password || passkeyPending}
-              >
-                Se connecter
-              </Button>
-            </form>
-
-            {canUsePasskey && (
-              <div className="mt-6">
-                <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-white/30">
-                  <span className="h-px flex-1 bg-white/[0.08]" />
-                  ou
-                  <span className="h-px flex-1 bg-white/[0.08]" />
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="lg"
-                  className="mt-6 w-full"
-                  icon={<Fingerprint />}
-                  loading={passkeyPending}
-                  disabled={submitting}
-                  onClick={() => void handlePasskey()}
-                >
-                  Empreinte ou Face ID
-                </Button>
-                <p className="mt-3 text-center text-xs leading-relaxed text-muted">
-                  Avec une passkey ajoutée depuis l’onglet Sécurité. Votre empreinte et votre visage restent sur votre appareil.
-                </p>
-              </div>
-            )}
-
-            {import.meta.env.DEV && (
-              <p className="mt-8 rounded-2xl border border-dashed border-white/10 p-4 text-xs leading-relaxed text-muted">
-                <span className="font-semibold text-white/70">Développement</span> — comptes du seed :
-                alice@epsi.fr, bob@epsi.fr, store@merchant.com · mot de passe <code className="text-white/70">Password123!</code>
-              </p>
-            )}
-          </div>
-        </section>
-      </div>
-    </div>
+      {import.meta.env.DEV && (
+        <p className="mt-8 rounded-2xl border border-dashed border-white/10 p-4 text-xs leading-relaxed text-muted">
+          <span className="font-semibold text-white/70">Développement</span> — comptes du seed :
+          alice@epsi.fr, bob@epsi.fr, store@merchant.com · mot de passe <code className="text-white/70">Password123!</code>
+        </p>
+      )}
+    </AuthShell>
   );
 }
