@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { startAuthentication } from '@simplewebauthn/browser';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api, ApiError, newIdempotencyKey } from '../api/client';
-import type { Payment, Wallet } from '../api/types';
+import type { Payment, PaymentDetails, Wallet } from '../api/types';
 import { useCurrentUser } from '../auth/AuthContext';
 import { Alert, Button, Card, Field, Skeleton } from '../components/ui';
 import { Check, ChevronLeft, Send } from '../components/icons';
 import { formatActivityDate, formatMoney, MAX_PAYMENT_AMOUNT, parseAmountInput } from '../lib/format';
+import { describePasskeyPromptError } from '../lib/passkeys';
 
 type Step = 'form' | 'review' | 'success';
 
@@ -58,6 +60,19 @@ function describePaymentError(error: ApiError): { tone: 'danger' | 'warning'; ti
       return { tone: 'warning', title: 'Votre compte est en cours de mise à jour.', body: 'Réessayez dans un instant.' };
     case 'WALLET_NOT_ACTIVE':
       return { tone: 'danger', title: 'Ce portefeuille ne peut pas émettre de paiement.', body: error.message };
+    // Validation par passkey (empreinte ou visage) : aucun montant n'est débité dans ces cas
+    case 'PASSKEY_PROMPT':
+      return { tone: 'warning', title: 'Paiement non validé.', body: error.message };
+    case 'PASSKEY_REQUIRED':
+    case 'PASSKEY_VERIFICATION_FAILED':
+      return {
+        tone: 'danger',
+        title: 'Validation par empreinte ou visage refusée.',
+        body: 'Utilisez une passkey enregistrée sur votre compte (onglet Sécurité). Aucun montant n’a été débité.',
+      };
+    case 'PASSKEY_CHALLENGE_INVALID':
+    case 'PASSKEY_PAYMENT_MISMATCH':
+      return { tone: 'warning', title: 'La validation a expiré.', body: 'Relancez le paiement : une nouvelle validation vous sera demandée.' };
     default:
       return { tone: 'danger', title: 'Paiement refusé.', body: error.message };
   }
@@ -156,14 +171,29 @@ export function PayPage() {
     idempotencyKey.current ??= newIdempotencyKey();
     setSubmitting(true);
     setSubmitError(null);
+    // Contenu exact du paiement : c'est lui que la passkey signe (le serveur refuse toute différence)
+    const details: PaymentDetails = {
+      senderWalletId: sender.id,
+      recipientEmail: draft.recipientEmail.trim().toLowerCase(),
+      amount: normalizedAmount,
+      ...(draft.description.trim() ? { description: draft.description.trim() } : {}),
+    };
     try {
+      // Passkey enregistrée sur le compte : le paiement doit être validé par empreinte ou visage
+      const strongAuth = await api.paymentPasskeyOptions(details);
+      let passkey: { challengeId: string; response: Awaited<ReturnType<typeof startAuthentication>> } | undefined;
+      if (strongAuth.required) {
+        try {
+          const response = await startAuthentication({ optionsJSON: strongAuth.options });
+          passkey = { challengeId: strongAuth.challengeId, response };
+        } catch (promptError) {
+          const message = describePasskeyPromptError(promptError);
+          if (message === null) throw promptError;
+          throw new ApiError(400, 'PASSKEY_PROMPT', message);
+        }
+      }
       const { payment: created } = await api.createPayment(
-        {
-          senderWalletId: sender.id,
-          recipientEmail: draft.recipientEmail.trim().toLowerCase(),
-          amount: normalizedAmount,
-          ...(draft.description.trim() ? { description: draft.description.trim() } : {}),
-        },
+        { ...details, ...(passkey ? { passkey } : {}) },
         idempotencyKey.current,
       );
       setPayment(created);

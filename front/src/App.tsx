@@ -6,6 +6,7 @@ import { Logo } from './components/Logo';
 import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { PayPage } from './pages/PayPage';
+import { SecurityPage } from './pages/SecurityPage';
 import { SignupPage } from './pages/SignupPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -49,6 +50,7 @@ export function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="payer" element={<PayPage />} />
+        <Route path="securite" element={<SecurityPage />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

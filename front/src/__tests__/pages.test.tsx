@@ -7,6 +7,13 @@ import { AuthProvider } from '../auth/AuthContext';
 import { saveSession } from '../api/session';
 import { resetServiceStatus } from '../api/serviceStatus';
 
+// Demande d'empreinte / visage du navigateur : simulée (jsdom n'a pas WebAuthn)
+const { startAuthenticationMock } = vi.hoisted(() => ({ startAuthenticationMock: vi.fn() }));
+vi.mock('@simplewebauthn/browser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@simplewebauthn/browser')>()),
+  startAuthentication: startAuthenticationMock,
+}));
+
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -172,6 +179,7 @@ describe('Écrans', () => {
       fetchMock.mockImplementation(async (url: string, init: RequestInit) => {
         if (url === '/api/auth/me') return jsonResponse(200, { user: ALICE });
         if (url === '/api/wallets') return jsonResponse(200, { wallets: [WALLET] });
+        if (url === '/api/payments/passkey-options') return jsonResponse(200, { required: false });
         if (url === '/api/payments') {
           paymentCalls.push(init);
           paymentAttempts += 1;
@@ -200,6 +208,7 @@ describe('Écrans', () => {
       fetchMock.mockImplementation(async (url: string) => {
         if (url === '/api/auth/me') return jsonResponse(200, { user: ALICE });
         if (url === '/api/wallets') return jsonResponse(200, { wallets: [WALLET] });
+        if (url === '/api/payments/passkey-options') return jsonResponse(200, { required: false });
         if (url === '/api/payments') return jsonResponse(404, { error: 'RECEIVER_NOT_FOUND', message: '…' });
         return jsonResponse(404, {});
       });
@@ -225,6 +234,65 @@ describe('Écrans', () => {
 
       expect(await screen.findByText('Solde insuffisant pour ce paiement.')).toBeInTheDocument();
       await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/payments')).toBe(false));
+    });
+
+    it('doit demander la validation par passkey quand le compte en a une, puis ne rien débiter si elle est annulée', async () => {
+      startAuthenticationMock.mockRejectedValueOnce(new DOMException('annulé', 'NotAllowedError'));
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url === '/api/auth/me') return jsonResponse(200, { user: ALICE });
+        if (url === '/api/wallets') return jsonResponse(200, { wallets: [WALLET] });
+        if (url === '/api/payments/passkey-options')
+          return jsonResponse(200, { required: true, challengeId: 'c1', options: { challenge: 'abc', rpId: 'localhost' } });
+        return jsonResponse(500, {});
+      });
+
+      const user = await fillAndReview();
+      await user.click(screen.getByRole('button', { name: /Confirmer et payer/ }));
+
+      expect(await screen.findByText('Paiement non validé.')).toBeInTheDocument();
+      expect(startAuthenticationMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls.some(([url]) => url === '/api/payments')).toBe(false);
+    });
+  });
+
+  describe('Sécurité', () => {
+    beforeEach(() => saveSession({ token: 'tok', user: ALICE }));
+
+    it('doit afficher l’état vide puis le formulaire d’ajout de passkey', async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url === '/api/auth/me') return jsonResponse(200, { user: ALICE });
+        if (url === '/api/auth/passkeys') return jsonResponse(200, { passkeys: [] });
+        return jsonResponse(404, {});
+      });
+      const user = userEvent.setup();
+      renderAt('/securite');
+
+      expect(await screen.findByText('Aucune passkey pour le moment.')).toBeInTheDocument();
+      const add = screen.queryByRole('button', { name: 'Ajouter' });
+      // jsdom n'a pas WebAuthn : le bouton n'apparaît que dans un navigateur compatible
+      if (add) {
+        await user.click(add);
+        expect(screen.getByLabelText('Mot de passe')).toBeInTheDocument();
+      } else {
+        expect(screen.getByText('Ce navigateur ne permet pas d’utiliser les passkeys.')).toBeInTheDocument();
+      }
+    });
+
+    it('doit lister les passkeys enregistrées', async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url === '/api/auth/me') return jsonResponse(200, { user: ALICE });
+        if (url === '/api/auth/passkeys')
+          return jsonResponse(200, {
+            passkeys: [
+              { id: 'pk1', name: 'Mac', deviceType: 'multiDevice', backedUp: true, transports: ['internal'], createdAt: new Date().toISOString(), lastUsedAt: null },
+            ],
+          });
+        return jsonResponse(404, {});
+      });
+      renderAt('/securite');
+
+      expect(await screen.findByText('Mac')).toBeInTheDocument();
+      expect(screen.getByText(/Synchronisée \(trousseau\)/)).toBeInTheDocument();
     });
   });
 });

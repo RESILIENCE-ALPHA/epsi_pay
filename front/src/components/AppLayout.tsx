@@ -3,12 +3,13 @@ import { useAuth, useCurrentUser } from '../auth/AuthContext';
 import { Logo } from './Logo';
 import { ServiceBanner } from './ServiceBanner';
 import { Avatar } from './ui';
-import { Home, LogOut, Send } from './icons';
+import { Fingerprint, Home, LogOut, Send } from './icons';
 import { displayName } from '../lib/format';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Accueil', icon: <Home />, end: true },
   { to: '/payer', label: 'Payer', icon: <Send />, end: false },
+  { to: '/securite', label: 'Sécurité', icon: <Fingerprint />, end: false },
 ];
 
 export function AppLayout() {
