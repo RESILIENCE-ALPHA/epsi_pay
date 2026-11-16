@@ -2,7 +2,7 @@
   "name": "epsi-pay",
   "version": "1.0.0",
   "private": true,
-  "description": "Plateforme de paiement r\u00e9siliente - Project RESILIENCE-ALPHA",
+  "description": "Plateforme de paiement résiliente - Project RESILIENCE-ALPHA",
   "scripts": {
     "install:all": "npm ci --prefix database && npm ci --prefix auth && npm ci --prefix payment && npm ci --prefix frontend && npm run prisma:generate",
     "prisma:generate": "npm --prefix database run prisma:generate && npm --prefix auth run prisma:generate && npm --prefix payment run prisma:generate",
@@ -14,6 +14,7 @@
     "db:seed": "docker compose up --build database",
     "db:setup": "docker compose up -d postgres && docker compose up --build database",
     "prisma:push": "npm --prefix database run prisma:push",
+    "prisma:migrate": "npm --prefix database run migrate:dev",
     "prisma:studio": "npm --prefix database run prisma:studio",
     "k8s:up": "bash scripts/minikube-up.sh",
     "k8s:forward": "kubectl -n epsi-pay port-forward svc/auth 3001:3000 & kubectl -n epsi-pay port-forward svc/payment 3002:3000 & kubectl -n epsi-pay port-forward svc/frontend 8080:8080 & wait",
