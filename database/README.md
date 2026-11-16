@@ -5,6 +5,30 @@ It holds the Prisma schema, the seed/migration scripts and the project's **offic
 
 ---
 
+## 🔁 Schema changes: Prisma migrations
+
+The schema is versioned in `prisma/migrations/` and applied by **`prisma migrate`**, never by
+`db push` in production. In the cluster, Argo CD runs `npm run migrate` (Job `epsi-pay-migrate`,
+PreSync hook) **before** every new version of auth and payment starts, so the tables always exist
+before the code that uses them.
+
+To change the schema:
+
+1. Edit `prisma/schema.prisma`.
+2. Generate the migration against a local database (Docker Postgres):
+   `npm run migrate:dev -- --name add_something` (from `database/`), or `npm run prisma:migrate` from the root.
+3. Read the generated `prisma/migrations/<timestamp>_add_something/migration.sql`.
+4. Commit the schema **and** the migration in the same pull request.
+
+`npm run migrate` also checks that the database matches `schema.prisma` and prints a warning with
+the SQL difference if it does not (manual change, or schema change without a migration).
+
+The first migration, `0_init`, is the schema as it existed when migrations were introduced. On a
+database created earlier by `db push`, `npm run migrate` marks it as already applied (baseline)
+instead of running it.
+
+---
+
 ## 📐 Entity-Relationship Diagram (ERD)
 
 ```mermaid
